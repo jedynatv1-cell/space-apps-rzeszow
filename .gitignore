@@ -1,0 +1,27 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+
+# Secrets / env (NASA API keys etc.)
+.env
+.env.*
+!.env.example
+
+# Large datasets — keep raw downloads out of git
+/data/raw/
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+Thumbs.db
+.DS_Store
