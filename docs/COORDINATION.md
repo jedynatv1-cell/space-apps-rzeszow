@@ -156,6 +156,7 @@ Potem otwórz w tym folderze Claude Code i wpisz **`/setup-laptop`**. Skill zapy
 
 | Kiedy | Kto | Co | Wpływ na innych |
 |---|---|---|---|
+| sob 14.11 ~13:40 | L3 (Claude, nie Antigravity) | W3 frontend: polarny sky-plot (horyzont, Słońce, Ziemia w skali), oś czasu z odtwarzaniem, porównanie 2–3 miejsc; tryb demo bez serwera (`?demo=1`) | L3 potrzebuje IP L1; adres serwera ustawia się w UI (Server) lub `?api=http://<IP-L1>:3000`. Kontrakt API bez zmian |
 | sob 14.11 ~11:45 | Claude (koordynator) | Role per laptop, hooki, skille, plan (ten plik) | Każdy PC: clone + `/setup-laptop` |
 | sob 14.11 ~11:20 | Claude (czat 0) | Lista urządzeń + Tailscale | Uzupełnić tabelę urządzeń; jeden laptop = serwer |
 | sob 14.11 ~10:30 | Claude (czat 0) | Szkielet + dokumentacja, CI zielone, DEM pobrane | Start: każdy bierze swoją gałąź |
