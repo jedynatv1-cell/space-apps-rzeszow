@@ -71,3 +71,75 @@ Co to dla nas znaczy:
 - Nagrane wideo z działającej wersji (na wypadek braku Wi-Fi).
 - Kernele i DEM lokalnie, aplikacja działa offline.
 - Zbudowana wersja release: `cargo build --release`.
+
+## Teksty strony projektu (EN, szkic W4)
+
+Gotowe do wklejenia w pola formularza. `[[...]]` = do uzupełnienia przez zespół. `⚠️ jeśli gotowe` = zostawić tylko, gdy funkcja działa w wersji z feature freeze (nd 10:00); inaczej usunąć zdanie. Nazwę projektu i tagline wybiera zespół (AI nie może wymyślać pomysłu).
+
+### Project Name
+
+[[Project name]]: working title "Lunar Landing Site Navigator"
+
+### High-Level Summary
+
+Near the lunar south pole the Sun and Earth never climb more than a few degrees above the horizon, so a small ridge can decide whether a lander has power and a direct radio link to Earth. [[Project name]] is a web tool that answers this quickly. Pick a landing site (Apollo, CLPS, Chandrayaan-3, SLIM, Chang'e, Artemis candidate regions, or your own coordinates) and a date. It shows where the Sun and Earth are relative to the local horizon, when sunlight and direct-to-Earth (DTE) windows open and close, and how long until sunset and Earthset. Sites and dates can be compared side by side, including a "launch slips by +1 / +7 / +30 days" view. Mission planners can re-plan quickly, and students can see why the pole is hard. Sun and Earth positions are computed from NASA/JPL DE440 ephemerides and agree with JPL Horizons to 0.001°.
+
+### Detailed Description
+
+**What it does**
+- Site picker with 29 curated lunar sites (12 near the south pole) plus custom latitude/longitude.
+- For any date and time span: Sun and Earth azimuth and elevation, the fraction of the solar disk above the horizon, and Earth visibility.
+- Key metrics per site: % of time in sunlight, % of time with Earth in view, longest night, longest DTE gap, hours to next sunset and Earthset, and the list of sunlight and DTE windows.
+- Elevation timeline chart and one-click date slips (+1 / +7 / +30 days).
+- ⚠️ if ready: polar sky plot with the horizon, Sun and Earth drawn to scale; side-by-side comparison of 2–3 sites.
+- ⚠️ if ready: horizon built from real terrain (LRO LOLA polar elevation model), not a smooth sphere.
+
+**How it works**
+- Backend in Rust (axum web server). Ephemerides via the ANISE library, reading NASA NAIF SPICE kernels (DE440s planetary ephemeris, lunar orientation `moon_pa_de440_200625`, frame `MOON_ME_DE440_ME421`).
+- For each time step it converts Sun and Earth positions into the local topocentric frame of the site (east-positive longitude, 1737.4 km reference sphere, the same convention JPL Horizons uses). Then it compares their elevation with the horizon mask, sampled every 0.5° of azimuth.
+- ⚠️ if ready: the horizon mask comes from ray-marching the LOLA 40 m/pixel south-polar DEM in 720 directions, including lunar curvature.
+- A simple JSON API (`/api/sites`, `/api/track`) feeds a static HTML/JavaScript front end, so the tool runs offline on a laptop.
+
+**Validation**
+- Sun and Earth elevations match JPL Horizons to 0.001° (automated test at Shackleton crater). Example: maximum Earth elevation at Shackleton on 24 Nov 2026 is 5.927° in our tool vs 5.926° in Horizons.
+- Sanity check: at Tranquility Base (Apollo 11) Earth is in view 100% of the time and the Sun about 50%, as expected for the near side.
+- ⚠️ if ready: illumination percentages compared with NASA GSFC PGDA south-pole illumination maps for [[N]] sites: [[table / link]].
+
+**Benefits and goals**
+- Answers "is this site and date good enough for power and communications?" in seconds, without having to master Quickmap, Moon Trek or Horizons.
+- Supports quick re-planning when missions slip, which happens often with CLPS and Artemis.
+- Explains polar illumination to the public: why a few degrees of terrain matter, and why Earth "wobbles" at the horizon (libration).
+
+**Tools**
+Rust, axum, ANISE, NASA NAIF SPICE kernels, HTML/JavaScript, GitHub Actions CI (fmt, clippy, tests), Claude Code and Antigravity (see Use of AI).
+
+**Known limitations**
+NASA has not published centre coordinates for the Artemis candidate regions, so we use clearly labelled proxy points (LROC mosaic centres, crater rims, published studies). [[Add: smooth-sphere horizon if the DEM did not make it.]]
+
+### Use of AI
+
+We used AI as a tool. The challenge choice and the core idea (compare sites and dates by Sun and Earth vs horizon, with mission-slip re-planning) are our own.
+- **Code:** Claude Code (Anthropic) and Google Antigravity helped write and review Rust and JavaScript code. All AI-written code was reviewed by the team and checked by automated tests. The ephemeris output is verified against JPL Horizons.
+- **Research and data:** AI assistants helped search for and summarise sources (NASA, USGS, LROC, papers). Every coordinate in `data/sites.json` has a source link, and unverified values are marked as such.
+- **Documentation and texts:** AI helped draft documentation and this project page; the team edited the final text.
+- **Images and video:** [[none AI-generated / list them; AI images must carry a watermark]]. No NASA logos, flags or mission insignia in AI-generated content.
+
+### NASA Data
+
+- **NASA/JPL NAIF SPICE kernels**: DE440s planetary ephemeris and DE440 lunar orientation (https://naif.jpl.nasa.gov/).
+- **JPL Horizons**: reference values used to validate our Sun and Earth positions (https://ssd.jpl.nasa.gov/horizons/).
+- **LRO LOLA polar DEM** (`ldem_80s_40m`, `ldem_75s_120m`), PDS Geosciences Node (https://pds-geosciences.wustl.edu/).
+- **LROC** NAC mosaics and **Quickmap**: locating Artemis candidate regions (https://data.lroc.im-ldi.com/, https://quickmap.lroc.asu.edu/).
+- **NSSDC**: Apollo landing site coordinates (https://nssdc.gsfc.nasa.gov/planetary/lunar/lunar_sites.html).
+- **NASA Artemis candidate landing regions** (Oct 2024 update) and CLPS mission pages on nasa.gov.
+- ⚠️ if used: **NASA GSFC PGDA** lunar south pole illumination maps (Mazarico et al.).
+
+### Space Agency Partner Data and Other References
+
+- **ISRO**: Chandrayaan-3 (Vikram) landing site, Statio Shiv Shakti (via USGS Gazetteer).
+- **JAXA**: SLIM landing site near Shioli crater.
+- **CNSA**: Chang'e 3–6 landing sites and the planned Chang'e 7 site (USGS Gazetteer, Wikipedia; marked unverified where applicable).
+- **USGS Gazetteer of Planetary Nomenclature**: feature coordinates (https://planetarynames.wr.usgs.gov/).
+- Wueller et al. (2026), JGR Planets, doi:10.1029/2025JE009434, and arXiv:2406.19863 (Acta Astronautica 226, 2025): positions inside Artemis candidate regions.
+- Wikipedia, "List of artificial objects on the Moon": secondary source for some CLPS and ispace sites.
+- Software: Rust, axum, ANISE (Nyx Space), [[front-end libraries if any]].
