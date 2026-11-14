@@ -84,3 +84,48 @@ th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: rig
 th:first-child, td:first-child { text-align: left; color: var(--muted); font-weight: normal; }
 td.best { color: #3ecf8e; font-weight: 600; }
 footer { color: var(--muted); font-size: 12px; padding: 0 16px 24px; max-width: 1280px; margin: auto; }
+
+/* ---------- robustness: narrow screens ---------- */
+main > *, .split > *, .side > *, .cmp-cols > * { min-width: 0; }      /* let wide tables scroll instead of stretching the page */
+#slips, #compare .panel, #best-panel { overflow-x: auto; }
+.metric b .ev, td .ev { font-size: 13px; font-weight: 500; color: var(--muted); margin-right: 4px; }
+@media (max-width: 640px) {
+  header { padding: 12px; }
+  h1 { font-size: 18px; }
+  main { padding: 10px; gap: 12px; }
+  .row { gap: 8px; }
+  .row label { flex: 1 1 140px; }
+  .row label input, .row label select { width: 100%; max-width: none; }
+  input.num { width: 100%; }
+  .slips { flex-wrap: wrap; }
+  .play { flex-wrap: wrap; }
+  #now { min-width: 0; flex-basis: 100%; text-align: left; }
+  #timeline { height: 180px; }
+  .counts { grid-template-columns: 1fr 1fr; }
+  .count b { font-size: 17px; }
+  #readout dl { grid-template-columns: auto 1fr; }
+  #readout dl dd:nth-of-type(2n) { grid-column: 2; }
+  .grid { grid-template-columns: 1fr 1fr; }
+  .metric b { font-size: 19px; }
+  .cmp-band { grid-template-columns: 90px 1fr; }
+  #server form { flex-direction: column; align-items: stretch; }
+}
+
+/* ---------- public / expert ---------- */
+[data-mode="public"] .expert { display: none !important; }
+.mode { display: inline-grid; grid-template-columns: 1fr 1fr; background: #0f131c; border: 1px solid #2c3548; border-radius: 999px; padding: 3px; align-self: center; }
+.mode button { background: transparent; border: 0; border-radius: 999px; padding: 4px 14px; font-size: 13px; color: var(--muted); }
+.mode button[aria-checked="true"] { background: #1f2937; color: var(--text); }
+
+/* ---------- mission verdict (thresholds: docs/RESEARCH.md §9.1) ---------- */
+#verdict .v-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+#verdict .v-head b { font-size: 18px; }
+.dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.good { --v: #3ecf8e; } .marginal { --v: #ffb000; } .poor { --v: #ff6b6b; }
+.dot { background: var(--v); box-shadow: 0 0 0 3px color-mix(in srgb, var(--v) 25%, transparent); }
+#verdict .v-head b { color: var(--v); }
+#verdict ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+#verdict li { display: flex; align-items: center; gap: 8px; }
+#verdict li > span:last-child { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+#verdict .fact, #verdict .caveat { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+#verdict .fact { border-top: 1px solid var(--line); padding-top: 8px; }

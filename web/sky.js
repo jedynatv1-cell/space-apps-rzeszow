@@ -234,7 +234,8 @@ function drawTimeline(canvas, data, idx, opts = {}) {
   if (!opts.bandsOnly && n > 1) {
     const t0 = Date.parse(pts[0].t), t1 = Date.parse(pts[n - 1].t);
     const days = (t1 - t0) / 864e5;
-    const every = days > 120 ? 30 : days > 45 ? 7 : days > 10 ? 2 : 1;
+    const pxPerDay = (w - left - right) / Math.max(days, 1e-9);
+    const every = [1, 2, 3, 7, 14, 30, 60].find(e => e * pxPerDay >= 44) || 90; // keep ~44 px between labels
     g.fillStyle = COLORS.label; g.strokeStyle = '#1b2233';
     const first = new Date(t0); first.setUTCHours(0, 0, 0, 0);
     for (let t = first.getTime(), k = 0; t <= t1; t += 864e5, k++) {
