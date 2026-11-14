@@ -5,11 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lunar Landing Site Navigator: Moon &amp; Solar System 3D</title>
 <link rel="stylesheet" href="solar.css">
-<script type="importmap">
-{ "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
-} }
+<script>
+// Three.js 0.170.0: vendored copy in web/vendor/three (works offline); CDN only if it is missing.
+// Must run before any module script, so the import map is built synchronously here.
+(() => {
+  const local = './vendor/three/', cdn = 'https://cdn.jsdelivr.net/npm/three@0.170.0/';
+  let base = local;
+  try {
+    const x = new XMLHttpRequest();
+    x.open('HEAD', local + 'build/three.module.min.js', false); x.send();
+    if (x.status !== 200) base = cdn;
+  } catch { base = cdn; }
+  const map = document.createElement('script');
+  map.type = 'importmap';
+  map.textContent = JSON.stringify({ imports: {
+    three: base + 'build/three.module.min.js', 'three/addons/': base + 'examples/jsm/' } });
+  document.currentScript.after(map);
+})();
 </script>
 </head>
 <body>
