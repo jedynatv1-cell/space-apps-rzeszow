@@ -61,15 +61,16 @@
       ]
     },
     "W4": {
-      "title": "Content + data: sites.json fixes, project page texts (EN), validation table",
-      "effort_h": 3,
+      "title": "Research + accuracy: how exact are our numbers (ephemeris vs JPL Horizons, horizon/illumination vs PGDA maps, DEM resolution and proxy-coordinate error budget), validation table for the pitch, sites.json, project page texts (EN)",
+      "effort_h": 5,
       "ai": "mostly human, Claude occasionally",
       "branch": "feat/content",
       "owns": [
         "data/sites.json",
         "docs/SUBMISSION.md",
         "docs/CHALLENGE.md",
-        "docs/RESEARCH.md"
+        "docs/RESEARCH.md",
+        "docs/VALIDATION.md"
       ]
     },
     "W5": {

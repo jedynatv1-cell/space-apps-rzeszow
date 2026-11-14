@@ -21,7 +21,7 @@
 | **L1** | 💪 mocny | **CORE = KOORDYNATOR**: centrala komunikacji botów (wiadomości, Dziennik, aktualność dokumentów), przydział pracy, merge PR-ów, serwer. **Nie pisze kodu funkcji.** | Claude (koordynator) | `main` + krótkie gałęzie `chore/*` |
 | **L2** | 💪 mocny | **W1** teren: czytnik LOLA DEM (✅ gotowy na `feat/terrain`), maska horyzontu + **W2** metryki i API: earthrise, `/api/compare`, walidacja PGDA | Claude (ciężko) | `feat/terrain`, `feat/metrics` |
 | **L3** | 🪶 słaby | **W3** frontend: sky-plot, panorama, porównanie obok siebie | Antigravity | `feat/ui` |
-| **L4** | 🪶 słaby | **W4** treści: `sites.json` (rozsunięcie regionów Artemis przez Quickmap), teksty strony projektu (EN), tabela walidacji | Claude (lekko, okazjonalnie) | `feat/content` |
+| **L4** | 🪶 słaby | **W4 research + dokładność**: jak dokładne są nasze liczby (efemerydy vs JPL Horizons, horyzont/oświetlenie vs mapy PGDA, błąd od rozdzielczości DEM i współrzędnych proxy), tabela walidacji do pitchu (`docs/VALIDATION.md`), `sites.json`, teksty strony projektu (EN) | Claude (średnio) | `feat/content` |
 | **L5** | 🪶 słaby | **QA**: testy na serwerze L1, zgłaszanie błędów, linki w trybie incognito + **W5** w sobotę: szkic slajdów i skryptu nagrania | Claude (lekko) / człowiek | `feat/demo` |
 | **L6** *(od niedzieli)* | 💪 mocny | **W5** media: skrypt nagrywający, DaVinci, 7 slajdów, pitch | Claude (skrypt) | `feat/demo` |
 | **R1** komputer zdalny (Google Remote Desktop) | 💪 zajęty | **NIE w projekcie.** Trenuje model PPO w osobnej sesji Claude („Sieć neuronowa do przewidywania…”). Nie klonujemy tu repo i nie wysyłamy wiadomości. | — | — |
@@ -161,6 +161,7 @@ Potem otwórz w tym folderze Claude Code i wpisz **`/setup-laptop`**. Skill zapy
 
 | Kiedy | Kto | Co | Wpływ na innych |
 |---|---|---|---|
+| sob 14.11 ~14:30 | L3 (Claude) | Widok 3D `web/solar.html` (stretch, osobny PR z `feat/ui-3d`): Księżyc w centrum, tekstury NASA SVS 4720 (LROC + LOLA), Układ Słoneczny w skali, ślady 365 dni, klikalne miejsca lądowania, panel czasu u góry, motyw jasny/ciemny | Nie blokuje PR #1. Daty lądowań tymczasowo w `web/solar/landing-dates.js` (docelowo pole w `sites.json`, L4) |
 | sob 14.11 ~13:40 | L3 (Claude, nie Antigravity) | W3 frontend: polarny sky-plot (horyzont, Słońce, Ziemia w skali), oś czasu z odtwarzaniem, porównanie 2–3 miejsc; tryb demo bez serwera (`?demo=1`) | L3 potrzebuje IP L1; adres serwera ustawia się w UI (Server) lub `?api=http://<IP-L1>:3000`. Kontrakt API bez zmian |
 | sob 14.11 | L4 (W4) | `sites.json`: rozsunięte pary Mons Mouton / Mons Mouton Plateau i Nobile Rim 1 / 2 (nadal proxy, źródła w `coord_note`); `SUBMISSION.md`: szkic tekstów strony projektu (EN) | L2/L3: inne wyniki dla tych 4 regionów; zespół: uzupełnić `[[...]]` w tekstach |
 | sob 14.11 ~13:00 | L1 (koordynator) | Czytnik LOLA DEM gotowy i zweryfikowany (`feat/terrain`: Shackleton = dołek 4 km, Malapert = szczyt 4,9 km). Nowe zasady: L1 tylko koordynuje, W1 przechodzi na L2, boty zgłaszają się do L1, dokumenty aktualne w każdym PR | **L2:** przejmij `feat/terrain`, zrób `horizon::from_dem`. **Wszyscy:** `/sync`, zasady w CLAUDE.md |
