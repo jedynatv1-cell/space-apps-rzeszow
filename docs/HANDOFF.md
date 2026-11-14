@@ -137,7 +137,7 @@ Kamienie milowe: sob 17:00 koniec dnia na miejscu (pracujemy dalej zdalnie), sob
 - **Horizons** nie uwzględnia terenu (elewacja względem sfery), limit 90 000 kroków na zapytanie, błędy wracają jako HTTP 200 z tekstem (szukać `$$SOE`).
 - **spaceappschallenge.org** renderuje się w JS: `curl`/WebFetch zwracają pustą stronę albo błąd TLS. Czytać w przeglądarce.
 - **Windows:** nowo zainstalowane `node`/`gh` działają dopiero w **nowym** terminalu. PowerShell 5.1 opakowuje stderr natywnych programów jako „błąd” mimo sukcesu (np. `cargo build`).
-- **Regiony Artemis** w `sites.json` mają współrzędne **proxy** (środki obiektów USGS); pary *Mons Mouton* / *Mons Mouton Plateau* i *Nobile Rim 1* / *Nobile Rim 2* mają identyczne współrzędne. Rozsunąć przed demo.
+- **Regiony Artemis** w `sites.json` mają współrzędne **proxy**. Pary *Mons Mouton* / *Mons Mouton Plateau* i *Nobile Rim 1* / *2* są już rozsunięte (L4, PR #3): środki mozaik LROC, zachodni brzeg krateru Nobile, punkt z arXiv:2406.19863. Źródła są w `coord_note`.
 - Według nasa.gov pierwsze lądowanie załogowe to teraz **Artemis IV (2028)**; Artemis III to test na LEO.
 - `.gitattributes` wymusza LF; ostrzeżenia o CRLF na Windows są nieszkodliwe.
 
