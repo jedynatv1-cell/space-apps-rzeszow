@@ -198,6 +198,9 @@ function renderExplore(i) {
   $('now').textContent = fmtTime(p.t);
   drawSky($('sky'), d, state.idx, { full: $('full-sky').checked });
   drawTimeline($('timeline'), d, state.idx);
+  state.pano = drawPanorama($('pano'), d, state.idx);
+  $('pano-note').textContent = `Grey = terrain skyline from ${d.horizon.source}${d.horizon.ground_m != null ? ` (ground ${Math.round(d.horizon.ground_m)} m)` : ''}. ` +
+    `Lines = Sun and Earth paths over the window, disks = now. Vertical scale stretched about ×${Math.max(1, Math.round(state.pano.exaggeration))}.`;
   $('hz-source').textContent = d.horizon.source;
 
   const count = (key, cls, setWord, riseWord) => {
@@ -524,6 +527,14 @@ function wire() {
   $('play').onclick = () => (state.playing ? pause() : play());
   $('scrub').oninput = () => { pause(); setIdx(+$('scrub').value); };
   attachScrub($('timeline'));
+  $('pano').addEventListener('pointermove', e => {
+    const d = state.data, L = state.pano;
+    if (!d || !L) return;
+    const r = $('pano').getBoundingClientRect(), az = (e.clientX - r.left - L.left) / L.xs;
+    if (az < 0 || az > 360) return;
+    const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    $('pano-read').textContent = `az ${az.toFixed(1)}° (${dirs[Math.round(az / 45) % 8]}) · horizon ${horizonAt(d.horizon, az).toFixed(2)}°`;
+  });
   document.addEventListener('keydown', e => {
     if (e.target.matches('input, select, textarea')) return;
     // A focused button would also "click" on Space/Enter; drop focus so only our shortcut runs.

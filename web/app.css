@@ -129,3 +129,9 @@ main > *, .split > *, .side > *, .cmp-cols > * { min-width: 0; }      /* let wid
 #verdict li > span:last-child { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
 #verdict .fact, #verdict .caveat { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
 #verdict .fact { border-top: 1px solid var(--line); padding-top: 8px; }
+
+/* ---------- horizon panorama ---------- */
+#pano-panel { margin-top: 16px; }
+#pano { height: 220px; cursor: crosshair; }
+#pano-read { font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { #pano { height: 170px; } }
