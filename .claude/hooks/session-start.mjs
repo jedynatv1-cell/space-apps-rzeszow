@@ -11,7 +11,12 @@ if (role.error) {
   out.push(`Role: NOT SET (${role.error}). File-ownership guard is OFF. Run the /setup-laptop skill before editing.`);
 } else {
   const ws = role.cfg.workstreams;
-  out.push(`This is ${role.laptop} of ${role.n} laptops${role.isIntegrator ? " (integrator: merges PRs, runs the shared server)" : ""}.`);
+  out.push(`This is ${role.laptop} of ${role.n} laptops${role.isIntegrator ? " (COORDINATOR: runs the bot network, merges PRs, runs the shared server; writes NO feature code)" : ""}.`);
+  out.push(
+    role.isIntegrator
+      ? "Rules: you are the hub. Check ListAgents, answer and relay [Lx→Ly] messages, keep docs/HANDOFF.md and the log current, merge only PRs that update docs."
+      : `Rules: message ${role.cfg.integrator} (SendMessage, "[${role.laptop}→${role.cfg.integrator}] ...") when you start, get blocked and ship; talk to other laptops directly (cc ${role.cfg.integrator}); update docs in the same PR (CLAUDE.md "Team rules").`,
+  );
   out.push(`Workstreams: ${role.streams.map((s) => `${s} ${ws[s].title}`).join("; ")}.`);
   out.push(`You may edit only: ${[...role.owns, ...role.cfg.everyone].join(", ") || "(nothing; read-only role)"}.`);
   if (role.branches.length) out.push(`Work on branch: ${role.branches.join(" or ")}.`);
