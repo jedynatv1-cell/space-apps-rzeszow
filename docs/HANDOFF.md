@@ -84,7 +84,7 @@ Pierwsza kompilacja trwa ok. 3–4 min (anise, nalgebra, axum). Zależności są
 | `src/metrics.rs`: próbkowanie, okna Słońca i DTE, sunset/Earthset, najdłuższa noc | ✅ testy + sprawdzenie w przeglądarce |
 | `src/api.rs`: `/api/health`, `/api/sites`, `/api/track` | ✅ ręcznie: 400 dla złych danych, limit 20 000 punktów |
 | `web/index.html`: wybór miejsca, wykres elewacji, karty metryk, slip +1/+7/+30 d | ✅ działa (szkic UI) |
-| `src/dem.rs`: czytnik LOLA DEM | ❌ **tylko stub z TODO**, następny krok |
+| `src/dem.rs`: czytnik LOLA DEM | ✅ na `feat/terrain` (etykieta z `.lbl`, mmap, interpolacja dwuliniowa; orientacja: Shackleton = dołek 4 km, Malapert = szczyt 4,9 km). Maska horyzontu: następny krok, L2 |
 | Maska horyzontu z terenu | ❌ następny krok |
 
 Weryfikacja na żywo (14.11):

@@ -15,8 +15,8 @@
 
 | ID | Maszyna | Nazwa czatu |
 |---|---|---|
-| L1 | 💪 | `L1 · teren + integrator` |
-| L2 | 💪 | `L2 · metryki i API` |
+| L1 | 💪 | `L1 · koordynator` |
+| L2 | 💪 | `L2 · teren + metryki` |
 | L3 | 🪶 | `L3 · frontend` (to jest Antigravity, nie Claude) |
 | L4 | 🪶 | `L4 · treści` |
 | L5 | 🪶 | `L5 · QA` |
@@ -25,12 +25,12 @@
 
 **L1**
 ```
-Jestem L1 (mocny, integrator). Uruchom /setup-laptop z ID L1, potem /sync. Sprawdź data/raw (HANDOFF §2) i uruchom serwer cargo run. Potem W1: czytnik LOLA DEM wg HANDOFF §6 pkt 1, zaczynając od testu orientacji (Shackleton = dołek). Odpowiadaj krótko.
+Jestem L1, KOORDYNATOR. Uruchom /setup-laptop z ID L1, potem /sync i serwer cargo run. Nie piszesz kodu funkcji: ten czat służy tylko komunikacji między botami (ListAgents, SendMessage), prowadzeniu Dziennika i HANDOFF, przydziałowi pracy i merge PR-ów, które aktualizują dokumenty. Odpowiadaj krótko.
 ```
 
 **L2**
 ```
-Jestem L2 (mocny). Uruchom /setup-laptop z ID L2, potem /sync. Potem W2: sunrise/earthrise w metrics.rs i endpoint /api/compare (kilka miejsc naraz). Kontrakt API tylko rozszerzaj. Odpowiadaj krótko.
+Jestem L2 (mocny). Uruchom /setup-laptop z ID L2, potem /sync. Najpierw W1: git switch feat/terrain, czytnik DEM jest gotowy (src/dem.rs), zrób horizon::from_dem (HANDOFF §6 pkt 1) i podłącz w api.rs. Potem W2: earthrise/sunrise i /api/compare. Zgłaszaj się do L1 przy starcie, blokadzie i /ship; dokumenty aktualizuj w tym samym PR. Odpowiadaj krótko.
 ```
 
 **L3 (Antigravity)**: pierwsza wiadomość w Antigravity, w folderze `navigator`, na gałęzi `feat/ui`:
