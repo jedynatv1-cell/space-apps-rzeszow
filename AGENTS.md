@@ -8,3 +8,4 @@ This repo is worked on by several AI agents in parallel on up to 6 laptops (Clau
 4. Treat the JSON API contract (HANDOFF §5) as frozen: add fields, never rename or remove them. The frontend talks to the shared server on L1 (`http://<L1>:3000`); do not run `cargo` on light laptops.
 5. Work on your branch (`feat/ui` for L3), push it and open a PR; only L1 merges to `main` after green CI. Never force-push, stash or reset.
 6. At the end of every work session, add a row at the top of the log in `docs/COORDINATION.md` §9.
+7. **Team rules** (CLAUDE.md "Team rules"): L1 is the coordinator and writes no feature code. Report to L1 when you start, get blocked and finish (a log row; the person at L3 passes it on, since Antigravity cannot receive messages). Every PR updates the docs it affects, or says in its body why none needed changing.

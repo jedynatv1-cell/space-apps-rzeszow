@@ -249,45 +249,45 @@
     "name": "Mons Mouton Plateau (candidate region)",
     "mission": "Artemis crewed landing (regions announced for Artemis III; first landing now Artemis IV, 2028)",
     "country_or_agency": "NASA / USA",
-    "lat_deg": -84.6,
-    "lon_deg": 31.0,
+    "lat_deg": -84.3,
+    "lon_deg": 30.6,
     "south_polar": true,
     "status": "candidate_region",
     "source_url": "https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/",
-    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'Mons Mouton' (http://planetarynames.wr.usgs.gov/Feature/16070) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. niezweryfikowane jako srodek regionu."
+    "coord_note": "Region list from NASA (Oct 2024). Coordinates = center of the LROC NAC mosaic made for this region, 'Mons Mouton Plateau ... low-Sun controlled NAC mosaic (A)' (https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_MOUTNPLTLOA, bounds -85.76..-82.85 lat, 15.49..46.61 lon). PROXY: mosaic center, not an official region center. Previously the USGS summit of Mons Mouton (-84.6, 31.0)."
   },
   {
     "name": "Mons Mouton (candidate region)",
     "mission": "Artemis crewed landing (regions announced for Artemis III; first landing now Artemis IV, 2028)",
     "country_or_agency": "NASA / USA",
-    "lat_deg": -84.6,
-    "lon_deg": 31.0,
+    "lat_deg": -85.4,
+    "lon_deg": 35.3,
     "south_polar": true,
     "status": "candidate_region",
     "source_url": "https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/",
-    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'Mons Mouton' (http://planetarynames.wr.usgs.gov/Feature/16070) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. niezweryfikowane jako srodek regionu."
+    "coord_note": "Region list from NASA (Oct 2024). Coordinates = center of the LROC NAC mosaic 'Nobile Rim 1 and Mons Mouton (Leibnitz Beta Plateau) ... (B)' (https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_MTMOUTONLOB, bounds -86.07..-84.82 lat, 27.29..43.23 lon), which covers this region together with Nobile Rim 1. PROXY: mosaic center, not an official region center."
   },
   {
     "name": "Nobile Rim 1 (candidate region)",
     "mission": "Artemis crewed landing (regions announced for Artemis III; first landing now Artemis IV, 2028)",
     "country_or_agency": "NASA / USA",
-    "lat_deg": -85.2752,
-    "lon_deg": 53.2725,
+    "lat_deg": -85.28,
+    "lon_deg": 38.7,
     "south_polar": true,
     "status": "candidate_region",
     "source_url": "https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/",
-    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'Nobile crater' (http://planetarynames.wr.usgs.gov/Feature/4321) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. niezweryfikowane jako srodek regionu."
+    "coord_note": "Region list from NASA (Oct 2024). DERIVED PROXY: western rim of Nobile crater = USGS center (-85.2752, 53.2725; http://planetarynames.wr.usgs.gov/Feature/4321) moved ~36 km (crater radius) west along the parallel. Region described as on Mons Mouton near the western rim of Nobile (Wueller et al. 2026, JGR Planets, https://doi.org/10.1029/2025JE009434); point lies inside LROC mosaic NAC_ROI_MTMOUTONLOB. niezweryfikowane jako srodek regionu."
   },
   {
     "name": "Nobile Rim 2 (candidate region)",
     "mission": "Artemis crewed landing (regions announced for Artemis III; first landing now Artemis IV, 2028)",
     "country_or_agency": "NASA / USA",
-    "lat_deg": -85.2752,
-    "lon_deg": 53.2725,
+    "lat_deg": -84.2016,
+    "lon_deg": 60.7,
     "south_polar": true,
     "status": "candidate_region",
     "source_url": "https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/",
-    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'Nobile crater' (http://planetarynames.wr.usgs.gov/Feature/4321) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. niezweryfikowane jako srodek regionu."
+    "coord_note": "Region list from NASA (Oct 2024). Coordinates = best-ranked point inside region 'DM2 (Nobile Rim 2)' from a multi-criteria study (84 12'05.6\" S, 60 41'59.6\" E; https://arxiv.org/abs/2406.19863, Acta Astronautica 226, 2025). PROXY: a point in the region, not an official region center or landing site."
   },
   {
     "name": "de Gerlache Rim 2 (candidate region)",

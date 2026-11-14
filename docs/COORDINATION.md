@@ -18,11 +18,11 @@
 
 | Laptop | Maszyna | Strumienie pracy (z `roles.json`) | Narzędzie AI | Gałąź |
 |---|---|---|---|---|
-| **L1** | 💪 mocny | **CORE** (integrator: merge, serwer, konfiguracja) + **W1** teren: czytnik LOLA DEM, maska horyzontu | Claude (ciężko) | `feat/terrain` (+ `main` jako integrator) |
-| **L2** | 💪 mocny | **W2** metryki i API: earthrise, `/api/compare`, walidacja PGDA (+ **W5** w sobotę) | Claude (średnio) | `feat/metrics` |
+| **L1** | 💪 mocny | **CORE = KOORDYNATOR**: centrala komunikacji botów (wiadomości, Dziennik, aktualność dokumentów), przydział pracy, merge PR-ów, serwer. **Nie pisze kodu funkcji.** | Claude (koordynator) | `main` + krótkie gałęzie `chore/*` |
+| **L2** | 💪 mocny | **W1** teren: czytnik LOLA DEM (✅ gotowy na `feat/terrain`), maska horyzontu + **W2** metryki i API: earthrise, `/api/compare`, walidacja PGDA | Claude (ciężko) | `feat/terrain`, `feat/metrics` |
 | **L3** | 🪶 słaby | **W3** frontend: sky-plot, panorama, porównanie obok siebie | Antigravity | `feat/ui` |
-| **L4** | 🪶 słaby | **W4** treści: `sites.json` (rozsunięcie regionów Artemis przez Quickmap), teksty strony projektu (EN), tabela walidacji | Claude (lekko, okazjonalnie) | `feat/content` |
-| **L5** | 🪶 słaby | **QA**: testy na serwerze L1, zgłaszanie błędów, sprawdzanie linków w trybie incognito, slajdy (Google Slides) | brak (człowiek) | — |
+| **L4** | 🪶 słaby | **W4 research + dokładność**: jak dokładne są nasze liczby (efemerydy vs JPL Horizons, horyzont/oświetlenie vs mapy PGDA, błąd od rozdzielczości DEM i współrzędnych proxy), tabela walidacji do pitchu (`docs/VALIDATION.md`), `sites.json`, teksty strony projektu (EN) | Claude (średnio) | `feat/content` |
+| **L5** | 🪶 słaby | **QA**: testy na serwerze L1, zgłaszanie błędów, linki w trybie incognito + **W5** w sobotę: szkic slajdów i skryptu nagrania | Claude (lekko) / człowiek | `feat/demo` |
 | **L6** *(od niedzieli)* | 💪 mocny | **W5** media: skrypt nagrywający, DaVinci, 7 slajdów, pitch | Claude (skrypt) | `feat/demo` |
 | **R1** komputer zdalny (Google Remote Desktop) | 💪 zajęty | **NIE w projekcie.** Trenuje model PPO w osobnej sesji Claude („Sieć neuronowa do przewidywania…”). Nie klonujemy tu repo i nie wysyłamy wiadomości. | — | — |
 
@@ -41,7 +41,7 @@
 | L1 | … | `laptop-l?` | … | ✅ wymagane | ✅ | jedyny serwer, integrator |
 | L2 | … | `laptop-l?` | … | opcjonalnie | ✅ | własny serwer testowy na `PORT=3001` |
 | L3 | … | `laptop-l?` | … | ❌ | — (Antigravity) | frontend → `http://<L1>:3000` |
-| L4 | … | `laptop-l?` | … | ❌ | ✅ | |
+| L4 | … | `laptop-l?` | Windows 10 | ❌ | ✅ | treści (W4), gałąź `feat/content` |
 | L5 | … | `laptop-l?` | … | ❌ | ✅ (podgląd sesji L1/L2) | |
 | L6 | … | `laptop-l?` | … | opcjonalnie | ✅ | od niedzieli |
 | R1 | — | — | … | ❌ | ❌ | zajęty treningiem PPO, poza projektem |
@@ -74,7 +74,7 @@ Potem otwórz w tym folderze Claude Code i wpisz **`/setup-laptop`**. Skill zapy
 
 ## 4. Limit Claude: zasady
 
-1. **Maks. 2 czaty Claude pracują naraz.** Pierwszeństwo ma ścieżka krytyczna: W1 teren (L1). Pozostali czekają albo robią swoją część ręcznie.
+1. **Maks. 2 czaty Claude pracują naraz.** Pierwszeństwo ma ścieżka krytyczna: W1 teren (L2). Czat koordynatora na L1 jest lekki (tylko wiadomości i merge). Pozostali czekają albo robią swoją część ręcznie.
 2. **Jeden czat na laptop, prowadzony długo.** Nowy czat zakładamy tylko przy zmianie tematu, bo ciągnięcie historii jest tańsze niż tłumaczenie wszystkiego od nowa. Nowy czat i tak dostanie kontekst z CLAUDE.md, HANDOFF i hooka startowego.
 3. **Bez subagentów i workflow** (wieloagentowe tryby mnożą zużycie). Nie wpisujcie słowa „ultracode”.
 4. **Słabe laptopy nie zakładają własnych ciężkich czatów.** Przez Remote Control podglądają i kierują sesjami L1/L2, co nie kosztuje dodatkowego limitu.
@@ -82,6 +82,11 @@ Potem otwórz w tym folderze Claude Code i wpisz **`/setup-laptop`**. Skill zapy
 6. **Ten czat (koordynator) po starcie można zarchiwizować.** Rolę koordynatora przejmuje czat na L1.
 
 ## 5. Jak agenci rozmawiają
+
+**Zasady obowiązkowe (pełna wersja: CLAUDE.md „Team rules”):**
+1. **L1 = koordynator, nie programista.** Czat na L1 służy tylko do komunikacji między botami: odbiera i przekazuje wiadomości, prowadzi Dziennik i HANDOFF, przydziela pracę, scala PR-y, restartuje serwer. Nie edytuje `src/`, `web/`, `data/`.
+2. **Boty rozmawiają ze sobą bezpośrednio i zawsze dają znać L1** (`[Lx→L1]`): na starcie zadania, przy blokadzie i po `/ship`. Potrzebujesz zmiany w cudzym pliku? Wiadomość do właściciela (cc L1), nigdy edycja.
+3. **Dokumenty aktualne w tym samym PR.** Zmiana zachowania, API, konfiguracji lub statusu = aktualizacja dokumentu w tym samym PR (HANDOFF przez wiadomość do L1, bo L1 jest jego właścicielem) + wiersz w Dzienniku. PR bez zmian w dokumentach musi mieć w opisie „Docs: none needed because …”. L1 takich PR-ów nie scala.
 
 **Ustawienia na każdym laptopie z Claude** (plik `~/.claude/settings.json`; skill `/setup-laptop` zaproponuje):
 ```json
@@ -137,10 +142,10 @@ Potem otwórz w tym folderze Claude Code i wpisz **`/setup-laptop`**. Skill zapy
 | Kiedy | L1 💪 | L2 💪 | L3 🪶 | L4 🪶 | L5 🪶 |
 |---|---|---|---|---|---|
 | do 12:15 | clone, `/setup-laptop`, Tailscale, `data/raw/`, `cargo run` | clone, `/setup-laptop`, Tailscale | clone, Antigravity w repo, Tailscale | clone, `/setup-laptop` | clone, Tailscale, otwiera serwer L1 |
-| 12:15–17:00 | W1: czytnik DEM → test orientacji (Shackleton = dołek) → maska | W2: earthrise/sunrise, `/api/compare` | W3: sky-plot + porównanie (na danych z serwera L1) | W4: rozsunięcie regionów Artemis, szkic tekstów EN | QA: klikanie, lista błędów w Dzienniku, szkic slajdów |
+| 12:15–17:00 | koordynacja: wiadomości, Dziennik, HANDOFF, serwer | W1: maska horyzontu (czytnik DEM ✅), potem W2: earthrise, `/api/compare` | W3: sky-plot + porównanie (na danych z serwera L1) | W4: rozsunięcie regionów Artemis, szkic tekstów EN | QA: klikanie, lista błędów w Dzienniku, szkic slajdów |
 | 13:30 / 15:00 / 16:30 | **merge PR-ów** | `/ship` | `/ship` (przez osobę) | `/ship` | — |
 | 17:00 | wyjście z PCI; serwer na noc = **L1 w domu** (Tailscale działa dalej) | | | | |
-| wieczór | cel: **maska horyzontu na `main` do 20:00** | walidacja PGDA | dopieszczanie UI | teksty strony projektu | — |
+| wieczór | merge, pilnowanie dokumentów | cel: **maska horyzontu na `main` do 20:00**, potem walidacja PGDA | dopieszczanie UI | teksty strony projektu | — |
 
 **Niedziela**
 | Kiedy | Co |
@@ -156,6 +161,9 @@ Potem otwórz w tym folderze Claude Code i wpisz **`/setup-laptop`**. Skill zapy
 
 | Kiedy | Kto | Co | Wpływ na innych |
 |---|---|---|---|
+| sob 14.11 ~13:40 | L3 (Claude, nie Antigravity) | W3 frontend: polarny sky-plot (horyzont, Słońce, Ziemia w skali), oś czasu z odtwarzaniem, porównanie 2–3 miejsc; tryb demo bez serwera (`?demo=1`) | L3 potrzebuje IP L1; adres serwera ustawia się w UI (Server) lub `?api=http://<IP-L1>:3000`. Kontrakt API bez zmian |
+| sob 14.11 | L4 (W4) | `sites.json`: rozsunięte pary Mons Mouton / Mons Mouton Plateau i Nobile Rim 1 / 2 (nadal proxy, źródła w `coord_note`); `SUBMISSION.md`: szkic tekstów strony projektu (EN) | L2/L3: inne wyniki dla tych 4 regionów; zespół: uzupełnić `[[...]]` w tekstach |
+| sob 14.11 ~13:00 | L1 (koordynator) | Czytnik LOLA DEM gotowy i zweryfikowany (`feat/terrain`: Shackleton = dołek 4 km, Malapert = szczyt 4,9 km). Nowe zasady: L1 tylko koordynuje, W1 przechodzi na L2, boty zgłaszają się do L1, dokumenty aktualne w każdym PR | **L2:** przejmij `feat/terrain`, zrób `horizon::from_dem`. **Wszyscy:** `/sync`, zasady w CLAUDE.md |
 | sob 14.11 ~11:45 | Claude (koordynator) | Role per laptop, hooki, skille, plan (ten plik) | Każdy PC: clone + `/setup-laptop` |
 | sob 14.11 ~11:20 | Claude (czat 0) | Lista urządzeń + Tailscale | Uzupełnić tabelę urządzeń; jeden laptop = serwer |
 | sob 14.11 ~10:30 | Claude (czat 0) | Szkielet + dokumentacja, CI zielone, DEM pobrane | Start: każdy bierze swoją gałąź |
