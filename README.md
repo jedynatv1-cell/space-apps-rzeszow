@@ -42,6 +42,8 @@ cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
 ## Docs
 
 - **[HANDOFF.md](docs/HANDOFF.md): current status, how to move the project, next steps (start here)**
+- [COORDINATION.md](docs/COORDINATION.md) — how 2 Claude chats + Antigravity work in parallel
+- [DEMO-PLAN.md](docs/DEMO-PLAN.md) — Rzeszów schedule (local deadline Sun 12:59), recording and DaVinci pipeline
 
 - [SETUP.md](docs/SETUP.md) — install the toolchain from scratch
 - [CONTRIBUTING.md](docs/CONTRIBUTING.md) — branches, commits, PRs

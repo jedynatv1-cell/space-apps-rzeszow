@@ -1,7 +1,8 @@
 # HANDOFF: stan projektu do przeniesienia
 
 > Stan na **sob 14.11.2026, ~10:00 CET** (dzień 1 hackathonu).
-> **Deadline: nd 15.11.2026, 23:59 CET**: kliknąć „Submit for Judging” na spaceappschallenge.org.
+> **Deadline LOKALNY: nd 15.11.2026, 12:59 CET** ⚠️ (ocena lokalna o 13:00). Globalny: nd 23:59 CET.
+> Pełny harmonogram Rzeszowa i plan nagrania: [DEMO-PLAN.md](DEMO-PLAN.md). Praca równoległa agentów: [COORDINATION.md](COORDINATION.md).
 > Ten plik to punkt startowy dla nowego czatu / nowej maszyny. Zacznij od sekcji 1 i 2.
 
 ---
@@ -128,7 +129,7 @@ Konwencje: długość **wschodnia** −180..180; elewacja względem płaszczyzny
 4. **[C] Metryki**: `hours_to_earthset` liczy pierwszy zachód **po pierwszym wschodzie**; jeśli Ziemia jest pod horyzontem na starcie, warto pokazać też „czas do Earthrise”. Analogicznie dla Słońca.
 5. **[E] Zgłoszenie**: strona projektu otwarta od 14.11 9:00; demo **≤ 30 s wideo lub ≤ 7 slajdów** (po angielsku); sekcja Use of SI; repo publiczne; zaprosić zespół do repo (`gh api -X PUT repos/jedynatv1-cell/space-apps-rzeszow/collaborators/LOGIN -f permission=push`).
 
-Kamienie milowe (z RESEARCH.md): sob 20:00 maska horyzontu na wykresie, nd 10:00 feature freeze, potem demo i zgłoszenie z zapasem.
+Kamienie milowe: sob 17:00 koniec dnia na miejscu (pracujemy dalej zdalnie), sob 20:00 maska horyzontu na wykresie, **nd 10:00 feature freeze**, 10:00–12:40 nagranie i strona projektu, **12:40 Submit** (lokalny deadline 12:59). Szczegóły: [DEMO-PLAN.md §4](DEMO-PLAN.md).
 
 ## 7. Pułapki, na które już trafiliśmy
 

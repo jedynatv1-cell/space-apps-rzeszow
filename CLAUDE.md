@@ -1,7 +1,8 @@
 # Lunar Landing Site Navigator — NASA Space Apps 2026 (Rzeszów)
 
 **Start here:** read `docs/HANDOFF.md` — current status, what is verified, next steps, pitfalls.
-Hackathon deadline: **Sun 15 Nov 2026, 23:59 CET** (submission on spaceappschallenge.org).
+Deadlines: **local judging submission Sun 15 Nov 2026, 12:59 CET** (Rzeszów); global Sun 23:59 CET.
+Parallel agents: you own only the files/branch assigned in `docs/COORDINATION.md`. Demo/recording plan: `docs/DEMO-PLAN.md`.
 
 ## What it is
 Rust (axum + ANISE) backend + static `web/` frontend. For a lunar site and date it computes Sun and

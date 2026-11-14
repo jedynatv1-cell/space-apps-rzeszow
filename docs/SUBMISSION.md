@@ -10,10 +10,12 @@ Jury ocenia głównie **stronę projektu na spaceappschallenge.org**. Wszystko n
 | Kiedy | Co |
 |---|---|
 | sob 14.11, 9:00 | Otwiera się zakładka „Project” na stronie zespołu |
-| nd 15.11, ~20:00 | **Nasz** deadline wewnętrzny: demo nagrane, strona wypełniona |
-| nd 15.11, 23:59 | **Ostateczny** deadline: kliknąć „Submit for Judging” |
+| nd 15.11, 10:00 | Feature freeze |
+| nd 15.11, 12:40 | **Nasz** Submit (zapas przed lokalnym deadline'em) |
+| **nd 15.11, 12:59** | **Deadline do oceny LOKALNEJ** (Rzeszów), ocena od 13:00, nagrody 16:00 |
+| nd 15.11, 23:59 | Deadline do oceny GLOBALNEJ: „Submit for Judging” |
 
-Lokalne jury w Rzeszowie może mieć inne godziny, więc trzeba zapytać Local Leada.
+Harmonogram ze strony wydarzenia Rzeszów (✅ sprawdzony 14.11). Pełny plan dnia: [DEMO-PLAN.md](DEMO-PLAN.md).
 
 ## Checklista zgłoszenia
 
