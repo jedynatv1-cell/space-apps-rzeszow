@@ -240,7 +240,7 @@ Plik maszynowy: `data/sites.json` (pola: `name, mission, country_or_agency, lat_
 | Luna 25 (uderzenie) | Luna 25 | -57.865 | 61.36 | | crashed | Wikipedia³ |
 | Shackleton rim peak | Chang'e 7 | -88.8 | 123.4 | TAK | planned (start przesunięty na 2027) | Wikipedia⁷, **niezweryfikowane** pierwotnie |
 | Peak near Cabeus B | Artemis | -82.2587 | -54.5846 | TAK | candidate_region | NASA⁸ + proxy USGS⁶ |
-| Haworth | Artemis | -87.45 | -5.17 | TAK | candidate_region | NASA⁸ + proxy USGS |
+| Haworth | Artemis | -86.75 | -23.67 | TAK | candidate_region | NASA⁸ + proxy: środek granic mozaiki LROC NAC_ROI_HAWORTH_LOC (stary środek krateru leżał w wiecznym cieniu) |
 | Malapert Massif | Artemis | -85.98 | -1.67 | TAK | candidate_region | NASA⁸ + proxy USGS (Mons Malapert) |
 | Mons Mouton Plateau | Artemis | -84.3 | 30.6 | TAK | candidate_region | NASA⁸ + proxy: środek mozaiki LROC NAC_ROI_MOUTNPLTLOA⁹ |
 | Mons Mouton | Artemis | -85.4 | 35.3 | TAK | candidate_region | NASA⁸ + proxy: środek mozaiki LROC NAC_ROI_MTMOUTONLOB⁹ (wspólnej z Nobile Rim 1) |
@@ -398,6 +398,70 @@ Uwaga: `Cargo.toml` repo ma `edition = "2024"`. ANISE sprawdziłem w projekcie z
 Kamienie milowe: sob 12:00, pierwszy `/api/track` i surowy wykres w przeglądarce. Sob 20:00, maska horyzontu na sky-plocie. Nd 10:00, feature freeze, potem nagranie demo i zgłoszenie z zapasem przed 23:59.
 
 ---
+
+## 9. Fakty dla UI: werdykt misji, tryb publiczny, panorama (L4, 14.11)
+
+Dla L3 (frontend). Teksty UI po angielsku. **Synteza** = nasze wnioski, nie reguła agencji.
+
+### 9.1 Progi do banera „mission verdict” (synteza)
+
+Okno analizy ≥ 1 miesiąc synodyczny, maszt ~1–2 m.
+
+| Metryka | Good | Marginal | Poor | Podstawa |
+|---|---|---|---|---|
+| % Sun visible | ≥ 70% | 50–70% | < 50% | Barker et al. 2021 używa > 70% średniego oświetlenia dla najlepszych obszarów; płaski równik ≈ 50% |
+| Longest night (h) | ≤ 50 | 50–120 | > 120 | 50 h = limit ciemności łazika VIPER (NASA); ~3–5 d = najgorsza noc na Connecting Ridge przy 2 m (Gläser 2014) |
+| Longest comms blackout (h) | ≤ 24 | 24–168 | > 168 | Synteza. Ok. 2 tygodnie bez Ziemi to według NASA normalny przypadek na biegunie (strona VIPER) |
+
+- Dla misji załogowej dodatkowo: 0 h ciemności w oknie 6,5 doby (kryterium Artemis III).
+- Na czerwono: noc i brak łączności nakładające się w czasie. Właśnie tego unikają „safe havens” VIPER.
+
+Źródła:
+- **Artemis III** (NASA, 19.08.2022, https://www.nasa.gov/news-release/nasa-identifies-candidate-regions-for-landing-next-americans-on-moon/):
+  - kryteria: nachylenie, łączność z Ziemią, oświetlenie, okna startowe;
+  - każdy region ma miejsca z „continuous access to sunlight throughout a 6.5-day period”;
+  - regiony leżą do 6° od bieguna, każdy ma ok. 15 × 15 km, a miejsce lądowania ~100 m promienia;
+  - NASA nie podaje liczbowych progów dla nachylenia ani łączności.
+- **VIPER** (https://science.nasa.gov/mission/viper/lunar-operations/): „cannot endure more than 50 hours of continuous darkness”. Ziemia znika „for two full weeks a month”, a Słońce wznosi się najwyżej na ~10°.
+- **IM-2 Athena** (03.2025, źródło prasowe): przewrócił się na bok, nie mógł ładować paneli i misja skończyła się ~13 h po lądowaniu. To awaria położenia lądownika, nie limit ciemności.
+- **Chandrayaan-3:** projekt na 1 dzień księżycowy (~14 dób ziemskich). Lądownik i łazik uśpiono przed lokalnym zachodem i się nie obudziły (źródło prasowe).
+
+### 9.2 Tryb publiczny: fakty i zdania do UI
+
+| Fakt | Wartość | Źródło | Zdanie do UI |
+|---|---|---|---|
+| Nachylenie osi do ekliptyki | 1,54° (nie mylić z 6,68° względem orbity) | NASA PIA13720 | "The Moon's axis tilts just 1.54°, so at the poles the Sun always skims the horizon." |
+| Doba słoneczna | 29,53 d | NSSDC Moon Fact Sheet | "One lunar day-night cycle lasts 29.53 Earth days." |
+| Libracja | ~7,7° w długości, ~6,7° w szerokości (źródła: 7,5–7,9° / 6,5–6,8°) | NASA Goddard (pwg.gsfc.nasa.gov/stargaze/Smoon4.htm) | "The Moon's monthly wobble lifts Earth a few degrees above the south-pole horizon, then hides it for about two weeks." |
+| Rozmiar Ziemi i Słońca na niebie | Ziemia ~1,9° (1,8–2,0°), Słońce ~0,53° (**obliczone** z NSSDC; zgodne z `radius_deg` w `ephem.rs`) | NSSDC | "From the Moon, Earth looks nearly four times wider than the Sun." |
+| Kratery wiecznego cienia | ~38 K pod powierzchnią w miejscu LCROSS (Diviner) | Paige et al. 2010, Science 330:479 | "Craters that never see sunlight sit near -240 °C, among the coldest places measured in the Solar System." |
+| Lód (LCROSS, Cabeus) | 5,6 ± 2,9% wody w masie | Colaprete et al. 2010, Science 330:463 | "In 2009 LCROSS hit dark Cabeus crater and found about 5.6% water ice by mass in the debris." |
+| Brak atmosfery | 3×10⁻¹⁵ bar w nocy; brak refrakcji i zmierzchu | NSSDC | "With no air, there's no twilight: sunlight switches on and off as the Sun's disk crosses the horizon." |
+| Równik vs grzbiety polarne | ~50% vs > 90% (Connecting Ridge 92,3% przy 2 m, 95,66% przy 10 m) | Gläser et al. 2014 (EPSC); NASA (Shackleton rim > 90%) | "An equator site sees the Sun half the time; the best south-pole ridges see it over 90% of the time." |
+
+Nasze własne liczby z maską LOLA (`VALIDATION.md` §3) potwierdzają ostatni wiersz: Connecting Ridge 91,1% / 95,7%.
+
+### 9.3 Panorama horyzontu: dane referencyjne
+
+- **Nie znaleziono opublikowanych profili horyzontu** (elewacja vs azymut) dla Shackletona, Connecting Ridge ani Malaperta. Nasza panorama z DEM byłaby pierwszą taką wizualizacją dla tych miejsc. Warto to powiedzieć w pitchu.
+- **Shackleton:** środek krateru -89,655°, 129,174°E; średnica brzegu 21 km; głębokość ~4 km (Zuber et al. 2012, Nature 486:378, Tab. 1; NASA SVS 4716). Zgodne z testem L1 (dołek ~4 km).
+- **Mons Mouton:** ~6,1 km nad otoczeniem (NASA moon.nasa.gov, „about as tall as Denali”; przez podsumowanie wyszukiwarki).
+- **Malapert:** > 5 km nad podstawą, **niezweryfikowane** (repost NASA w mediach społecznościowych). Test L1: szczyt 4,9 km.
+- **Mazarico et al. 2011:** pełny tekst niedostępny. Z abstraktu NTRS (https://ntrs.nasa.gov/citations/20120010094): DEM 240 m, kilka cykli 18,6 roku co 6 h; punkt przy brzegu Shackletona oświetlony nieprzerwanie 240 dni w roku, najdłuższa ciemność ~1,5 d. Tabela 3 (procenty dla miejsc) **nieodczytana**.
+- **Barker et al. 2021** (Tab. 2), Connecting Ridge, regiony 1–7, lata 2024–2026, percentyle 1/99 ze 100 klonów DEM:
+
+  | Wysokość | Średnie oświetlenie | Najdłuższy okres w świetle | Najdłuższy cień |
+  |---|---|---|---|
+  | 1 m | 67–71% | 63–142 d | 13–22 d |
+  | 5 m | 83–89% | 119–231 d | 4–8 d |
+
+  Uwaga: to inny okres i inne punkty niż u Gläsera (tam najdłuższa ciemność przy 2 m to 3–5 d).
+- **Produkty NASA PGDA do porównań:**
+  - **#69** Lunar Polar Illumination: średnie oświetlenie, wieczny cień, **średnia widoczność Ziemi** (przydatne do sprawdzenia naszego DTE); 60–240 m/px, co godzinę przez 18,6 roku.
+  - **#78** DEM-y 5 m/px dla miejsc lądowania.
+  - **#90** DEM 10–240 m i katalog PSR (Barker et al. 2023).
+  - **#104** modele 13 regionów Artemis.
+  - Żaden z nich nie jest profilem horyzontu.
 
 ## Lista rzeczy niezweryfikowanych (zbiorczo)
 
