@@ -8,6 +8,7 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 const state = {
   api: '',          // base URL of the server; '' = same origin
   demo: false,      // use web/mock.js instead of the server
+  recorded: false,  // replay real L1 responses from web/samples/
   sites: [],
   view: 'explore',
   data: null,       // explore: one /api/track response
@@ -22,25 +23,57 @@ const state = {
 function initServer() {
   const q = new URLSearchParams(location.search);
   state.demo = q.get('demo') === '1';
+  state.recorded = q.get('recorded') === '1';
   state.api = (q.get('api') ?? localStorage.getItem('navApi') ?? '').replace(/\/$/, '');
   $('api').value = state.api;
   showServer();
   $('server-form').onsubmit = e => {
     e.preventDefault();
     state.api = $('api').value.trim().replace(/\/$/, '');
-    state.demo = false;
+    state.demo = false; state.recorded = false;
     localStorage.setItem('navApi', state.api);
     start();
   };
-  $('use-demo').onclick = () => { state.demo = true; start(); };
+  $('use-demo').onclick = () => { state.demo = true; state.recorded = false; start(); };
+  $('use-recorded').onclick = () => { state.recorded = true; state.demo = false; start(); };
 }
 
 function showServer() {
-  $('server-label').textContent = state.demo ? 'demo data' : (state.api || 'this page\'s server');
-  $('demo-banner').hidden = !state.demo;
+  $('server-label').textContent = state.recorded ? 'recorded L1 data' : state.demo ? 'demo data' : (state.api || 'this page\'s server');
+  $('demo-banner').hidden = !state.demo && !state.recorded;
+  $('demo-banner').textContent = state.recorded
+    ? 'RECORDED L1 DATA: real server responses for 4 sites, fixed window 14 Nov 2026 + 30 days, step 60 min (horizon: sphere). Connect to the server for other sites and dates.'
+    : 'DEMO DATA: approximate geometry and synthetic terrain, not the real ephemeris. Connect to the server for real results.';
+  if (state.recorded) { $('start').value = '2026-11-14T00:00'; $('days').value = 30; $('step').value = 60; }
+}
+
+// Real /api/track responses captured on L1 (web/samples/README.md): file, name, lat, lon.
+const RECORDED = [
+  ['track_shackleton_rim.json', 'Shackleton rim (recorded)', -89.45, -129.78],
+  ['track_malapert.json', 'Mons Malapert (recorded)', -85.98, -1.67],
+  ['track_de_gerlache_area.json', 'de Gerlache area (recorded)', -88.5, -87.0],
+  ['track_apollo11.json', 'Apollo 11 (recorded)', 0.67416, 23.47314],
+];
+
+async function recorded(path) {
+  const [p, qs] = path.split('?');
+  if (p === '/api/sites') {
+    return RECORDED.map(([, name, lat_deg, lon_deg]) => ({ name, mission: 'recorded on L1', country_or_agency: '',
+      lat_deg, lon_deg, south_polar: lat_deg < -60, status: 'recorded', source_url: '', coord_note: null }));
+  }
+  if (p === '/api/track') {
+    const q = new URLSearchParams(qs), lat = +q.get('lat'), lon = +q.get('lon');
+    const hit = RECORDED.find(([, , a, b]) => Math.abs(a - lat) < 0.02 && Math.abs(b - lon) < 0.02);
+    if (!hit) throw new Error(`Recorded data covers only: ${RECORDED.map(r => r[1]).join(', ')}. Other places need the live server.`);
+    const r = await fetch('samples/' + hit[0]);
+    if (!r.ok) throw new Error(`Missing web/samples/${hit[0]} (HTTP ${r.status}).`);
+    return r.json();
+  }
+  throw new Error(`Recorded data has no ${p}`);
 }
 
 async function api(path) {
+  if (state.recorded) return recorded(path);
   if (state.demo) return Mock.handle(path);
   let r;
   try { r = await fetch(state.api + path); } catch {
