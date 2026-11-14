@@ -9,6 +9,7 @@ const state = {
   api: '',          // base URL of the server; '' = same origin
   demo: false,      // use web/mock.js instead of the server
   recorded: false,  // replay real L1 responses from web/samples/
+  mode: localStorage.getItem('navMode') || 'expert', // 'public' | 'expert'
   sites: [],
   view: 'explore',
   data: null,       // explore: one /api/track response
@@ -123,9 +124,27 @@ function setBusy(on, msg = BUSY_DEFAULT) {
   $('f').querySelector('button[type=submit]').disabled = on;
 }
 
+/** Check the form before asking the server; returns a plain-language problem or null. */
+function validate() {
+  const days = +$('days').value, step = +$('step').value, start = Date.parse($('start').value + 'Z');
+  if (!Number.isFinite(start)) return 'Pick a start date and time.';
+  if (!(days > 0 && days <= 400)) return 'Days must be between 1 and 400.';
+  if (!(step >= 1)) return 'Step must be at least 1 minute.';
+  const n = Math.floor(days * 1440 / step) + 1;
+  if (n > 20000) return `That is ${n.toLocaleString('en')} time steps; the limit is 20,000. Use fewer days or a larger step (at least ${Math.ceil(days * 1440 / 19999)} min for ${days} days).`;
+  if (state.view === 'explore') {
+    const lat = +$('lat').value, lon = +$('lon').value;
+    if ($('lat').value === '' || !(lat >= -90 && lat <= 90)) return 'Latitude must be between −90 and 90.';
+    if ($('lon').value === '' || !(lon >= -180 && lon <= 180)) return 'Longitude must be between −180 and 180 (east positive).';
+  }
+  return null;
+}
+
 async function run() {
   const req = ++state.req;
   $('err').textContent = '';
+  const problem = validate();
+  if (problem) { $('err').textContent = problem; return; }
   $('best-panel').hidden = true; // results belong to the previous site/window
   // Only show the spinner if the answer is not instant (cached responses come back in ~0.1 s).
   const busyTimer = setTimeout(() => { if (req === state.req) setBusy(true); }, 250);
@@ -179,6 +198,9 @@ function renderExplore(i) {
   $('now').textContent = fmtTime(p.t);
   drawSky($('sky'), d, state.idx, { full: $('full-sky').checked });
   drawTimeline($('timeline'), d, state.idx);
+  state.pano = drawPanorama($('pano'), d, state.idx);
+  $('pano-note').textContent = `Grey = terrain skyline from ${d.horizon.source}${d.horizon.ground_m != null ? ` (ground ${Math.round(d.horizon.ground_m)} m)` : ''}. ` +
+    `Lines = Sun and Earth paths over the window, disks = now. Vertical scale stretched about ×${Math.max(1, Math.round(state.pano.exaggeration))}.`;
   $('hz-source').textContent = d.horizon.source;
 
   const count = (key, cls, setWord, riseWord) => {
@@ -191,15 +213,16 @@ function renderExplore(i) {
   const row = (name, cls, b, hz, v) =>
     `<dt class="${cls}">${name}</dt><dd>az ${fmt(b.az_deg)}° · el ${fmt(b.el_deg, 2)}°</dd><dd>${visWord(v)} <small>(terrain ${fmt(hz, 2)}°)</small></dd>`;
   $('readout').innerHTML = `<h2>${fmtTime(p.t)}</h2>
-    <div class="counts">${count('sun_vis', 'sun', 'Sunset', 'Sunrise')}${count('earth_vis', 'earth', 'Earthset', 'Earthrise')}</div><dl>
+    <div class="counts">${count('sun_vis', 'sun', 'Sunset', 'Sunrise')}${count('earth_vis', 'earth', 'Earthset', 'Earthrise')}</div><dl class="expert">
     ${row('Sun', 'sun', p.sun, p.sun_horizon_deg, p.sun_vis)}
     ${row('Earth', 'earth', p.earth, p.earth_horizon_deg, p.earth_vis)}</dl>`;
 
   // Metrics are computed once per request; render only when the data object changes.
   if ($('metrics').dataset.for !== String(state.req)) {
     $('metrics').dataset.for = state.req;
+    renderVerdict(d.summary);
     $('metrics').innerHTML = METRICS.map(m =>
-      `<div class="metric"><small>${m.label}</small><b>${m.show(d.summary)}</b><small>${m.note(d.summary)}</small></div>`).join('');
+      `<div class="metric${mClass(m)}"><small>${mLabel(m)}</small><b>${m.show(d.summary)}</b><small>${m.note(d.summary)}</small></div>`).join('');
   }
 }
 
@@ -226,15 +249,52 @@ const startEvent = (s, setH, setT, riseH, riseT, setW, riseW) => {
 const sunEvt = s => startEvent(s, 'hours_to_sunset', 'next_sunset', 'hours_to_sunrise', 'next_sunrise', 'Sunset', 'Sunrise');
 const earthEvt = s => startEvent(s, 'hours_to_earthset', 'next_earthset', 'hours_to_earthrise', 'next_earthrise', 'Earthset', 'Earthrise');
 
+// Traffic-light thresholds from docs/RESEARCH.md §9.1 (team synthesis from Barker 2021, VIPER, Gläser 2014).
+const VERDICT = [
+  { name: 'Sunlight', pub: 'Sunlight', v: s => s.sun_visible_pct, good: v => v >= 70, ok: v => v >= 50, show: v => fmt(v, 0, '%') },
+  { name: 'Longest night', pub: 'Longest darkness', v: s => s.longest_night_hours, good: v => v <= 50, ok: v => v <= 120, show: v => fmt(v, 0, ' h') },
+  { name: 'Longest Earth-link gap', pub: 'Longest time without Earth contact', v: s => s.longest_dte_gap_hours, good: v => v <= 24, ok: v => v <= 168, show: v => fmt(v, 0, ' h') },
+];
+const RANK = { good: 0, marginal: 1, poor: 2 };
+const VERDICT_WORD = { good: 'Good site', marginal: 'Marginal site', poor: 'Poor site' };
+// Plain-language facts for public mode (docs/RESEARCH.md §9.2).
+const FACTS = [
+  'The Moon’s axis tilts just 1.54°, so at the poles the Sun always skims the horizon.',
+  'One lunar day-night cycle lasts 29.53 Earth days.',
+  'The Moon’s monthly wobble lifts Earth a few degrees above the south-pole horizon, then hides it for about two weeks.',
+  'From the Moon, Earth looks nearly four times wider than the Sun.',
+  'Craters that never see sunlight sit near −240 °C, among the coldest places measured in the Solar System.',
+  'With no air there’s no twilight: sunlight switches on and off as the Sun’s disk crosses the horizon.',
+  'An equator site sees the Sun half the time; the best south-pole ridges see it over 90% of the time.',
+];
+
+function renderVerdict(s) {
+  const rows = VERDICT.map(c => {
+    const v = c.v(s), cls = v == null ? 'marginal' : c.good(v) ? 'good' : c.ok(v) ? 'marginal' : 'poor';
+    return { c, v, cls };
+  });
+  const worst = rows.reduce((a, r) => (RANK[r.cls] > RANK[a] ? r.cls : a), 'good');
+  const pub = state.mode === 'public';
+  const short = +$('days').value < 29.5;
+  $('verdict').innerHTML = `<div class="v-head ${worst}"><span class="dot"></span><b>${VERDICT_WORD[worst]}</b><small>for a solar-powered lander</small></div>
+    <ul>${rows.map(r => `<li class="${r.cls}"><span class="dot"></span>${pub ? r.c.pub : r.c.name}<span>${r.c.show(r.v)}</span></li>`).join('')}</ul>
+    ${short ? '<p class="caveat">Thresholds assume a window of at least one lunar month (29.5 days); this window is shorter.</p>' : ''}
+    ${pub ? `<p class="fact">${FACTS[state.req % FACTS.length]}</p>` : '<p class="caveat expert">Good / marginal / poor: Sun ≥ 70 / 50–70 / &lt; 50 %, night ≤ 50 / 50–120 / &gt; 120 h, link gap ≤ 24 / 24–168 / &gt; 168 h (team synthesis, RESEARCH §9.1).</p>'}`;
+  $('verdict').hidden = false;
+}
+
+const mLabel = m => (state.mode === 'public' && m.pub ? m.pub : m.label);
+const mClass = m => (m.expert ? ' expert' : '');
+
 const METRICS = [
-  { label: 'Sun visible', key: s => s.sun_visible_pct, better: 'hi', show: s => fmt(s.sun_visible_pct, 1, '%'), note: () => 'of the time' },
-  { label: 'Mean solar disk', key: s => s.sun_mean_fraction, better: 'hi', show: s => fmt(s.sun_mean_fraction * 100, 1, '%'), note: () => '≈ relative solar energy' },
-  { label: 'Earth visible (DTE)', key: s => s.earth_visible_pct, better: 'hi', show: s => fmt(s.earth_visible_pct, 1, '%'), note: () => 'direct-to-Earth link possible' },
-  { label: 'Longest night', key: s => s.longest_night_hours, better: 'lo', show: s => fmt(s.longest_night_hours, 0, ' h'), note: () => 'continuous darkness' },
-  { label: 'Longest DTE gap', key: s => s.longest_dte_gap_hours, better: 'lo', show: s => fmt(s.longest_dte_gap_hours, 0, ' h'), note: () => 'no direct link' },
-  { label: 'From start: Sun', key: s => sunEvt(s).h, better: null, show: s => { const e = sunEvt(s); return e.h == null ? '—' : `${e.w} ${fmtDur(e.h)}`; }, note: s => { const e = sunEvt(s); return e.t ? fmtTime(e.t) : 'no change in window'; } },
-  { label: 'From start: Earth', key: s => earthEvt(s).h, better: null, show: s => { const e = earthEvt(s); return e.h == null ? '—' : `${e.w} ${fmtDur(e.h)}`; }, note: s => { const e = earthEvt(s); return e.t ? fmtTime(e.t) : 'no change in window'; } },
-  { label: 'Sunlight windows', key: s => s.sunlight_windows.length, better: null, show: s => String(s.sunlight_windows.length), note: s => `longest ${fmt(Math.max(0, ...s.sunlight_windows.map(w => w.hours)), 0, ' h')}` },
+  { label: 'Sun visible', pub: 'Sunlit time', key: s => s.sun_visible_pct, better: 'hi', show: s => fmt(s.sun_visible_pct, 1, '%'), note: () => 'of the time' },
+  { label: 'Mean solar disk', pub: 'Solar power (relative)', key: s => s.sun_mean_fraction, better: 'hi', show: s => fmt(s.sun_mean_fraction * 100, 1, '%'), note: () => '≈ relative solar energy' },
+  { label: 'Earth visible (DTE)', pub: 'Can talk to Earth', key: s => s.earth_visible_pct, better: 'hi', show: s => fmt(s.earth_visible_pct, 1, '%'), note: () => 'direct-to-Earth link possible' },
+  { label: 'Longest night', pub: 'Longest darkness', key: s => s.longest_night_hours, better: 'lo', show: s => fmt(s.longest_night_hours, 0, ' h'), note: () => 'continuous darkness' },
+  { label: 'Longest DTE gap', expert: true, key: s => s.longest_dte_gap_hours, better: 'lo', show: s => fmt(s.longest_dte_gap_hours, 0, ' h'), note: () => 'no direct link' },
+  { label: 'From start: Sun', expert: true, key: s => sunEvt(s).h, better: null, show: s => { const e = sunEvt(s); return e.h == null ? '—' : `<span class="ev">${e.w}</span>${fmtDur(e.h)}`; }, note: s => { const e = sunEvt(s); return e.t ? fmtTime(e.t) : 'no change in window'; } },
+  { label: 'From start: Earth', expert: true, key: s => earthEvt(s).h, better: null, show: s => { const e = earthEvt(s); return e.h == null ? '—' : `<span class="ev">${e.w}</span>${fmtDur(e.h)}`; }, note: s => { const e = earthEvt(s); return e.t ? fmtTime(e.t) : 'no change in window'; } },
+  { label: 'Sunlight windows', expert: true, key: s => s.sunlight_windows.length, better: null, show: s => String(s.sunlight_windows.length), note: s => `longest ${fmt(Math.max(0, ...s.sunlight_windows.map(w => w.hours)), 0, ' h')}` },
 ];
 
 // ---------- launch slips (GET /api/compare, dates mode) ----------
@@ -378,7 +438,7 @@ function renderCmpTable() {
     const valid = vals.filter(v => v != null && !Number.isNaN(v));
     const best = m.better && valid.length > 1 ? (m.better === 'hi' ? Math.max(...valid) : Math.min(...valid)) : null;
     const allSame = valid.every(v => v === valid[0]);
-    return `<tr><td>${m.label}</td>` + state.cmp.map((c, k) => {
+    return `<tr class="${mClass(m).trim()}"><td>${mLabel(m)}</td>` + state.cmp.map((c, k) => {
       const isBest = best !== null && !allSame && vals[k] === best;
       return `<td class="${isBest ? 'best' : ''}">${m.show(c.data.summary)}${isBest ? ' ★' : ''}</td>`;
     }).join('') + '</tr>';
@@ -414,6 +474,16 @@ function pause() { state.playing = false; $('play').textContent = '▶'; $('play
 
 // ---------- wiring ----------
 
+function setMode(mode) {
+  state.mode = mode === 'public' ? 'public' : 'expert';
+  localStorage.setItem('navMode', state.mode);
+  document.body.dataset.mode = state.mode;
+  document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.mode === state.mode)));
+  // Labels are baked into the rendered metrics/table: force a re-render.
+  $('metrics').dataset.for = ''; $('cmp-cols').dataset.for = '';
+  render();
+}
+
 function setView(view) {
   state.view = view;
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === view)));
@@ -443,6 +513,8 @@ async function start() {
 function wire() {
   $('f').onsubmit = e => { e.preventDefault(); run(); };
   $('best').onclick = findBest;
+  document.querySelectorAll('[data-mode]').forEach(b => (b.onclick = () => setMode(b.dataset.mode)));
+  setMode(state.mode);
   $('site').onchange = () => {
     const s = state.sites[$('site').value];
     if (s) { $('lat').value = s.lat_deg; $('lon').value = s.lon_deg; run(); }
@@ -455,6 +527,14 @@ function wire() {
   $('play').onclick = () => (state.playing ? pause() : play());
   $('scrub').oninput = () => { pause(); setIdx(+$('scrub').value); };
   attachScrub($('timeline'));
+  $('pano').addEventListener('pointermove', e => {
+    const d = state.data, L = state.pano;
+    if (!d || !L) return;
+    const r = $('pano').getBoundingClientRect(), az = (e.clientX - r.left - L.left) / L.xs;
+    if (az < 0 || az > 360) return;
+    const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    $('pano-read').textContent = `az ${az.toFixed(1)}° (${dirs[Math.round(az / 45) % 8]}) · horizon ${horizonAt(d.horizon, az).toFixed(2)}°`;
+  });
   document.addEventListener('keydown', e => {
     if (e.target.matches('input, select, textarea')) return;
     // A focused button would also "click" on Space/Enter; drop focus so only our shortcut runs.
