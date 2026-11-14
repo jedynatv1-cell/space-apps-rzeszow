@@ -41,6 +41,8 @@ cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
 
 ## Docs
 
+- **[HANDOFF.md](docs/HANDOFF.md): current status, how to move the project, next steps (start here)**
+
 - [SETUP.md](docs/SETUP.md) — install the toolchain from scratch
 - [CONTRIBUTING.md](docs/CONTRIBUTING.md) — branches, commits, PRs
 - [CHALLENGE.md](docs/CHALLENGE.md) — chosen challenge, datasets, MVP scope
