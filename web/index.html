@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lunar Landing Site Navigator</title>
+<style>
+  :root { --bg:#0b0e14; --panel:#141924; --text:#e6e9ef; --muted:#8b93a7; --sun:#ffb000; --earth:#4ea1ff; --hz:#6b7280; --ok:#3ecf8e; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:16px; border-bottom:1px solid #222a3a; }
+  h1 { margin:0; font-size:20px; }
+  header p { margin:4px 0 0; color:var(--muted); }
+  main { padding:16px; display:grid; gap:16px; max-width:1200px; margin:auto; }
+  form { display:flex; flex-wrap:wrap; gap:12px; align-items:end; background:var(--panel); padding:12px; border-radius:8px; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--muted); }
+  input, select, button { font:inherit; padding:6px 8px; border-radius:6px; border:1px solid #2c3548; background:#0f131c; color:var(--text); }
+  button { background:#2563eb; border-color:#2563eb; cursor:pointer; }
+  .slips button { background:#1f2937; border-color:#374151; }
+  .card { background:var(--panel); padding:12px; border-radius:8px; }
+  canvas { width:100%; height:320px; display:block; }
+  .legend span { margin-right:16px; font-size:13px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; }
+  .metric b { display:block; font-size:22px; }
+  .metric small { color:var(--muted); }
+  #err { color:#ff6b6b; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Lunar Landing Site Navigator</h1>
+  <p>Sun &amp; Earth above the horizon at lunar landing sites — power and direct-to-Earth windows. <em>Scaffold UI — terrain mask coming next.</em></p>
+</header>
+<main>
+  <form id="f">
+    <label>Site <select id="site"></select></label>
+    <label>Lat° <input id="lat" type="number" step="0.001" value="-89.45" style="width:100px"></label>
+    <label>Lon° (E) <input id="lon" type="number" step="0.001" value="-129.78" style="width:100px"></label>
+    <label>Start (UTC) <input id="start" type="datetime-local" value="2026-11-14T00:00"></label>
+    <label>Days <input id="days" type="number" min="1" max="400" value="30" style="width:80px"></label>
+    <label>Step (min) <input id="step" type="number" min="1" value="60" style="width:80px"></label>
+    <button type="submit">Compute</button>
+    <span class="slips">Slip: <button type="button" data-d="1">+1 d</button> <button type="button" data-d="7">+7 d</button> <button type="button" data-d="30">+30 d</button></span>
+  </form>
+  <div id="err"></div>
+  <section class="card">
+    <div class="legend"><span style="color:var(--sun)">● Sun elevation</span><span style="color:var(--earth)">● Earth elevation</span><span style="color:var(--hz)">— horizon</span></div>
+    <canvas id="chart"></canvas>
+  </section>
+  <section class="grid" id="metrics"></section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let sites = [];
+
+async function loadSites() {
+  sites = await (await fetch('/api/sites')).json();
+  $('site').innerHTML = '<option value="">— custom —</option>' + sites.map((s, i) =>
+    `<option value="${i}">${s.south_polar ? '❄ ' : ''}${s.name} (${s.mission})</option>`).join('');
+  $('site').onchange = () => {
+    const s = sites[$('site').value];
+    if (s) { $('lat').value = s.lat_deg; $('lon').value = s.lon_deg; run(); }
+  };
+}
+
+async function run() {
+  $('err').textContent = '';
+  const q = new URLSearchParams({ lat: $('lat').value, lon: $('lon').value, start: $('start').value,
+                                  days: $('days').value, step_min: $('step').value });
+  const r = await fetch('/api/track?' + q);
+  const data = await r.json();
+  if (!r.ok) { $('err').textContent = data.error || 'error'; return; }
+  draw(data); metrics(data.summary);
+}
+
+function draw({ points }) {
+  const c = $('chart'), dpr = devicePixelRatio || 1;
+  c.width = c.clientWidth * dpr; c.height = c.clientHeight * dpr;
+  const g = c.getContext('2d'); g.scale(dpr, dpr);
+  const W = c.clientWidth, H = c.clientHeight, pad = 36;
+  const els = points.flatMap(p => [p.sun.el_deg, p.earth.el_deg]);
+  const lo = Math.min(-2, ...els) - 0.5, hi = Math.max(2, ...els) + 0.5;
+  const x = i => pad + (W - pad - 8) * i / Math.max(1, points.length - 1);
+  const y = v => 8 + (H - pad - 8) * (hi - v) / (hi - lo);
+  g.fillStyle = '#8b93a7'; g.font = '12px system-ui';
+  for (let v = Math.ceil(lo); v <= hi; v += Math.max(1, Math.round((hi - lo) / 8))) {
+    g.fillText(v + '°', 2, y(v) + 4);
+    g.strokeStyle = '#1f2633'; g.beginPath(); g.moveTo(pad, y(v)); g.lineTo(W, y(v)); g.stroke();
+  }
+  const line = (f, color) => { g.strokeStyle = color; g.lineWidth = 2; g.beginPath();
+    points.forEach((p, i) => i ? g.lineTo(x(i), y(f(p))) : g.moveTo(x(i), y(f(p)))); g.stroke(); };
+  line(p => p.sun_horizon_deg, '#6b7280');
+  line(p => p.sun.el_deg, '#ffb000');
+  line(p => p.earth.el_deg, '#4ea1ff');
+  g.fillStyle = '#8b93a7';
+  [0, points.length >> 1, points.length - 1].forEach(i => g.fillText(points[i].t.slice(0, 16), Math.min(x(i), W - 110), H - 8));
+}
+
+function metrics(s) {
+  const fmt = (v, u = '') => v == null ? '—' : (typeof v === 'number' ? v.toFixed(1) : v) + u;
+  const m = [
+    ['Sun visible', fmt(s.sun_visible_pct, '%'), 'of the time'],
+    ['Mean solar disk', fmt(s.sun_mean_fraction * 100, '%'), '≈ relative energy'],
+    ['Earth visible (DTE)', fmt(s.earth_visible_pct, '%'), 'centre above horizon'],
+    ['Hours to sunset', fmt(s.hours_to_sunset, ' h'), s.next_sunset || 'no sunset in window'],
+    ['Hours to Earthset', fmt(s.hours_to_earthset, ' h'), s.next_earthset || 'no Earthset in window'],
+    ['Longest night', fmt(s.longest_night_hours, ' h'), 'continuous darkness'],
+    ['Longest DTE gap', fmt(s.longest_dte_gap_hours, ' h'), 'no direct link'],
+  ];
+  $('metrics').innerHTML = m.map(([k, v, d]) => `<div class="card metric"><small>${k}</small><b>${v}</b><small>${d}</small></div>`).join('');
+}
+
+$('f').onsubmit = e => { e.preventDefault(); run(); };
+document.querySelectorAll('.slips button').forEach(b => b.onclick = () => {
+  const d = new Date($('start').value + 'Z'); d.setUTCDate(d.getUTCDate() + +b.dataset.d);
+  $('start').value = d.toISOString().slice(0, 16); run();
+});
+loadSites().then(run);
+</script>
+</body>
+</html>
