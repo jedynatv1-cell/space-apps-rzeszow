@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::ephem::Ephem;
-use crate::horizon::HorizonMask;
+use crate::horizon::{self, HorizonMask};
 use crate::metrics::{self, Summary, TrackPoint, TrackRequest};
 use crate::site::{NamedSite, Site};
 
@@ -105,8 +105,8 @@ pub fn compute_track(s: &AppState, q: &TrackQuery) -> Result<TrackResponse, Stri
         step: Unit::Minute * q.step_min,
         dte_margin_deg: q.dte_margin_deg,
     };
-    // TODO(B): use a LOLA terrain mask when the site is inside a loaded DEM.
-    let horizon = HorizonMask::sphere(&site, 720);
+    // LOLA terrain mask when a loaded DEM covers the site, else the smooth sphere (cached).
+    let horizon = horizon::for_site(&site).as_ref().clone();
     let points = metrics::track(&s.ephem, &horizon, &req).map_err(|e| e.to_string())?;
     let summary = metrics::summarize(&points, q.step_min / 60.0, req.dte_margin_deg);
     Ok(TrackResponse {
