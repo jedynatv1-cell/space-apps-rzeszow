@@ -51,6 +51,7 @@
   </form>
 
   <div id="err" role="alert"></div>
+  <div id="busy" role="status" hidden><span class="spin"></span> Computing… the first request for a site loads its terrain and can take a few seconds.</div>
 
   <!-- Timeline + playback, shared by both views. -->
   <section class="panel" id="timeline-panel">
@@ -82,7 +83,7 @@
           <label class="inline"><input type="checkbox" id="full-sky"> full sky (0–90°)</label>
         </div>
         <canvas id="sky"></canvas>
-        <p class="hint">Seen from above, north up. Centre = highest plotted elevation, rim = lowest; the scale is stretched so the near-horizon Sun is visible. Grey = terrain. Disks are to scale.</p>
+        <p class="hint">Seen from above, north up. The scale is stretched around the Sun and Earth (centre = highest elevation they reach, rim = lowest terrain); grey is terrain, and ridges higher than the Sun ever gets fill towards the centre. Disks are to scale.</p>
       </div>
       <div class="side">
         <div class="panel" id="readout"></div>
