@@ -156,6 +156,7 @@ Potem otwórz w tym folderze Claude Code i wpisz **`/setup-laptop`**. Skill zapy
 
 | Kiedy | Kto | Co | Wpływ na innych |
 |---|---|---|---|
+| sob 14.11 ~14:30 | L3 (Claude) | Widok 3D `web/solar.html` (stretch, osobny PR z `feat/ui-3d`): Księżyc w centrum, tekstury NASA SVS 4720 (LROC + LOLA), Układ Słoneczny w skali, ślady 365 dni, klikalne miejsca lądowania, panel czasu u góry, motyw jasny/ciemny | Nie blokuje PR #1. Daty lądowań tymczasowo w `web/solar/landing-dates.js` (docelowo pole w `sites.json`, L4) |
 | sob 14.11 ~13:40 | L3 (Claude, nie Antigravity) | W3 frontend: polarny sky-plot (horyzont, Słońce, Ziemia w skali), oś czasu z odtwarzaniem, porównanie 2–3 miejsc; tryb demo bez serwera (`?demo=1`) | L3 potrzebuje IP L1; adres serwera ustawia się w UI (Server) lub `?api=http://<IP-L1>:3000`. Kontrakt API bez zmian |
 | sob 14.11 ~11:45 | Claude (koordynator) | Role per laptop, hooki, skille, plan (ten plik) | Każdy PC: clone + `/setup-laptop` |
 | sob 14.11 ~11:20 | Claude (czat 0) | Lista urządzeń + Tailscale | Uzupełnić tabelę urządzeń; jeden laptop = serwer |
