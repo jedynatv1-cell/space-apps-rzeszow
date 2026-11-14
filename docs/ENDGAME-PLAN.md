@@ -20,7 +20,7 @@
 >    ```text
 >    Jestem L6 (mocny, demo). Uruchom /setup-laptop z ID L6, potem /sync. Potem W5 wg docs/DEMO-PLAN.md: skrypt Playwright nagrywający sceny + captions.srt + timeline.fcpxml do DaVinci. Tylko ekran, bez twarzy i głosów osób poniżej 18 lat. Odpowiadaj krótko.
 >    ```
-> 5. **Verify L6 can open the app:** Open `http://laptop-l1:3000` (or `http://100.113.240.51:3000`).
+> 5. **Verify L6 can open the app:** Open `http://laptop-l1:3000`.
 
 ---
 
@@ -120,7 +120,7 @@ We verified our UI's **Mission Verdict** thresholds ([`web/app.js`](../web/app.j
 ## 4. Final 4-Hour Execution & Verification Checklist
 
 - [x] **Hour 1 — Unslop `web/` UI + Add CSV Export + 3D→2D Link:** **DONE and merged on `main` (PRs #30–#33).**
-  - Preview live at `http://localhost:8080/?api=http://100.113.240.51:3000` and `http://localhost:8080/solar.html`.
+  - Preview live at `http://localhost:8080/?api=http://laptop-l1:3000` and `http://localhost:8080/solar.html`.
   - Next step: Commit `web/**`, update log in [docs/COORDINATION.md](../docs/COORDINATION.md), push `feat/ui`, and open PR to `main`.
 - [ ] **Hour 2 — Set up `L6` & Record the ≤ 30s Screen Video (`W5`):**
   - Follow the **L6 Reminder** box at the top of this document.
