@@ -10,7 +10,7 @@
 | Jak repo zostaje „takie samo”? | Hook na starcie każdej sesji pokazuje, ile brakuje do `main`. Skill **`/sync`** to nadrabia. L1 scala co ~1,5 h. | Ręczne pilnowanie zawodzi; automat nie zapomina. |
 | Ile czatów Claude? | **Sobota: 3** (L1 i L2 ciężko, L4 lekko). **Niedziela: +1 na L6.** Naraz pracują **maks. 2**. | Jeden limit dla wszystkich: każdy równoległy czat zjada go tak samo. |
 | Kto robi frontend? | **Antigravity na L3** (słaby laptop wystarczy). | HTML/JS nie wymaga kompilacji, Antigravity ma osobny limit (Google), a serwer stoi na L1. |
-| Gdzie stoi aplikacja? | **Jeden serwer na L1** (`cargo run`), reszta przez Tailscale `http://<L1>:3000`. | Tylko L1 potrzebuje 620 MB danych i kompilacji Rusta. |
+| Gdzie stoi aplikacja? | **Jeden serwer na L1** (`cargo run`), reszta przez `http://<IP-L1>:3000`. Tailscale tylko, gdy Wi-Fi blokuje połączenia między laptopami (test: [START-PC.md](START-PC.md)). | Tylko L1 potrzebuje 620 MB danych i kompilacji Rusta. |
 | Jak agenci rozmawiają? | **Remote Control włączony w każdej sesji Claude** + `SendMessage`. Antigravity przez Dziennik (§8). | Wiadomość od razu trafia do właściwego laptopa, a Dziennik zostaje źródłem prawdy. |
 | Co pilnuje struktury? | **Hooki** (`.claude/settings.json`): agent nie edytuje cudzych plików, nie pushuje na `main`, nie robi force-push/stash/reset. | Działa automatycznie w każdej sesji Claude na każdym PC, bo jest w repo. |
 
@@ -56,7 +56,7 @@
    + main                                       tylko odczyt)
 ```
 
-**Konfiguracja raz na każdym PC (~10 min):**
+**Konfiguracja raz na każdym PC (~5 min):** kroki, prompty startowe i nazwy czatów są w [START-PC.md](START-PC.md).
 ```bash
 gh repo clone jedynatv1-cell/space-apps-rzeszow navigator
 cd navigator
@@ -116,7 +116,7 @@ Potem otwórz w tym folderze Claude Code i wpisz **`/setup-laptop`**. Skill zapy
 - Nowy plik (np. `src/compare.rs`): najpierw L1 dopisuje go do `owns` w `roles.json`.
 - Zmiany w hookach i ustawieniach działają od **następnej** sesji.
 
-## 7. Sieć: Tailscale (bez logowania na każdym laptopie)
+## 7. Sieć: Tailscale (OPCJONALNIE, tylko gdy `http://<IP-L1>:3000` nie działa z innych laptopów)
 
 **Po co:** Wi-Fi na wydarzeniu często izoluje klientów (laptopy nie widzą się nawzajem). Tailscale to omija, w razie potrzeby przez serwery pośredniczące: wolniej, ale działa.
 
