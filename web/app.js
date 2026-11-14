@@ -24,6 +24,8 @@ function initServer() {
   const q = new URLSearchParams(location.search);
   state.demo = q.get('demo') === '1';
   state.recorded = q.get('recorded') === '1';
+  // Deep link from the 3D view: index.html?lat=..&lon=..
+  if (q.has('lat') && q.has('lon')) { $('lat').value = q.get('lat'); $('lon').value = q.get('lon'); }
   state.api = (q.get('api') ?? localStorage.getItem('navApi') ?? '').replace(/\/$/, '');
   $('api').value = state.api;
   showServer();
