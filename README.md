@@ -1,6 +1,10 @@
 # NASA Space Apps Challenge — Rzeszów
 
-Team project for the Space Apps hackathon in Rzeszów.
+Team project for the Space Apps hackathon in Rzeszów: Lunar Landing Site Navigator. Compare lunar landing sites and dates by Sun and Earth visibility over the real LOLA terrain horizon (solar power and direct-to-Earth windows).
+
+![Sky plot, verdict and countdown](web/img/analysis.jpg)
+![Side-by-side compare](web/img/compare.jpg)
+![3D Moon with landing sites](web/img/moon3d.jpg)
 
 ## Layout
 
