@@ -8,11 +8,13 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anise::prelude::*;
-use axum::extract::{Query, State};
+use axum::extract::{FromRequestParts, Query, State};
+use axum::http::request::Parts;
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -23,6 +25,29 @@ use crate::site::{NamedSite, Site};
 
 /// Upper bound on samples per request, to keep responses small and the server responsive.
 pub const MAX_POINTS: usize = 20_000;
+
+/// Query-string extractor that reports bad parameters as `{"error": ...}` JSON (400),
+/// like every other API error, instead of axum's plain-text rejection.
+pub struct Q<T>(pub T);
+
+impl<T, S> FromRequestParts<S> for Q<T>
+where
+    T: DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        match Query::<T>::from_request_parts(parts, state).await {
+            Ok(Query(v)) => Ok(Q(v)),
+            Err(e) => Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": e.body_text() })),
+            )
+                .into_response()),
+        }
+    }
+}
 
 pub struct AppState {
     pub ephem: Ephem,
@@ -88,8 +113,8 @@ pub struct FormatParam {
 
 async fn track(
     State(s): State<Arc<AppState>>,
-    Query(q): Query<TrackQuery>,
-    Query(f): Query<FormatParam>,
+    Q(q): Q<TrackQuery>,
+    Q(f): Q<FormatParam>,
 ) -> Response {
     let csv = match f.format.as_deref() {
         None | Some("json") => false,
@@ -199,8 +224,8 @@ pub struct BestNearbyResponse {
 
 async fn best_nearby(
     State(s): State<Arc<AppState>>,
-    Query(track): Query<TrackQuery>,
-    Query(p): Query<SearchParams>,
+    Q(track): Q<TrackQuery>,
+    Q(p): Q<SearchParams>,
 ) -> Response {
     match tokio::task::spawn_blocking(move || compute_best_nearby(&s, &track, &p)).await {
         Ok(Ok(resp)) => Json(resp).into_response(),
@@ -341,7 +366,7 @@ pub struct CompareResponse {
     pub rank_by_earth: Vec<usize>,
 }
 
-async fn compare(State(s): State<Arc<AppState>>, Query(q): Query<CompareQuery>) -> Response {
+async fn compare(State(s): State<Arc<AppState>>, Q(q): Q<CompareQuery>) -> Response {
     match tokio::task::spawn_blocking(move || compute_compare(&s, &q)).await {
         Ok(Ok(resp)) => Json(resp).into_response(),
         Ok(Err(msg)) => (StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))).into_response(),
@@ -595,6 +620,30 @@ mod tests {
             "2026-11-14T01:00:00Z,10.0000,1.5000,0.5000,1.0000,355.0000,4.2500,-0.1000,1.0000,150000000,150000000"
         );
         assert_eq!(csv_filename(&r), "track_-89.4500_-129.7800_2026-11-14.csv");
+    }
+
+    #[tokio::test]
+    async fn bad_query_is_json_400() {
+        let (mut parts, _) = axum::http::Request::builder()
+            .uri("/api/track?lat=abc&lon=0&start=2026-11-14")
+            .body(())
+            .unwrap()
+            .into_parts();
+        let Err(resp) = Q::<TrackQuery>::from_request_parts(&mut parts, &()).await else {
+            panic!("lat=abc must be rejected");
+        };
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(resp.headers()[header::CONTENT_TYPE], "application/json");
+        let (mut ok, _) = axum::http::Request::builder()
+            .uri("/api/track?lat=-89.5&lon=0&start=2026-11-14")
+            .body(())
+            .unwrap()
+            .into_parts();
+        assert!(
+            Q::<TrackQuery>::from_request_parts(&mut ok, &())
+                .await
+                .is_ok()
+        );
     }
 
     #[test]
