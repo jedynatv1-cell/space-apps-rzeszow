@@ -29,6 +29,11 @@ button.secondary, .slips button { background: #1f2937; border-color: #374151; }
 .tabs button[aria-selected="true"] { background: #1f2937; border-color: #374151; color: var(--text); }
 #err { color: var(--err); min-height: 0; }
 #err:empty { display: none; }
+#busy { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.spin { width: 14px; height: 14px; border: 2px solid #374151; border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+main.loading canvas, main.loading .grid, main.loading table { opacity: .45; transition: opacity .2s; }
+button:disabled { opacity: .6; cursor: progress; }
 .play { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .play button { width: 40px; }
 #scrub { flex: 1; padding: 0; }
