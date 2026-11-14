@@ -27,6 +27,12 @@ function initServer() {
   state.recorded = q.get('recorded') === '1';
   // Deep link from the 3D view: index.html?lat=..&lon=..
   if (q.has('lat') && q.has('lon')) { $('lat').value = q.get('lat'); $('lon').value = q.get('lon'); }
+  // Demo deep links: ?start=2026-11-14&days=14&step=60&mode=public&view=compare&cmp=Haworth,Malapert&site=Shackleton&focus=slips|pano|sky
+  if (q.has('start')) { const v = q.get('start'); $('start').value = v.length <= 10 ? `${v}T00:00` : v.slice(0, 16); }
+  if (q.has('days')) $('days').value = q.get('days');
+  if (q.has('step')) $('step').value = q.get('step');
+  if (q.has('mode')) state.mode = q.get('mode');
+  state.link = q;
   state.api = (q.get('api') ?? localStorage.getItem('navApi') ?? '').replace(/\/$/, '');
   $('api').value = state.api;
   showServer();
@@ -102,6 +108,21 @@ async function loadSites() {
     sel.innerHTML = (k === 2 ? '<option value="">— none —</option>' : '') + opts;
     if (picks[k] !== undefined) sel.value = picks[k];
   });
+  // Deep-link site choices by (part of) the site name, so links survive changes to the site list order.
+  const byName = t => {
+    const k = t.trim().toLowerCase(), names = state.sites.map(s => s.name.toLowerCase());
+    const starts = names.findIndex(n => n.startsWith(k));
+    return starts >= 0 ? starts : names.findIndex(n => n.includes(k));
+  };
+  const link = state.link;
+  if (link?.has('cmp')) {
+    const ids = link.get('cmp').split(',').map(byName).filter(i => i >= 0);
+    document.querySelectorAll('.cmp-site').forEach((sel, k) => { sel.value = ids[k] !== undefined ? ids[k] : (k === 2 ? '' : sel.value); });
+  }
+  if (link?.has('site')) {
+    const i = byName(link.get('site'));
+    if (i >= 0) { $('lat').value = state.sites[i].lat_deg; $('lon').value = state.sites[i].lon_deg; }
+  }
   // Keep the explore selection in sync with typed coordinates.
   const match = state.sites.findIndex(s => Math.abs(s.lat_deg - +$('lat').value) < 1e-6 && Math.abs(s.lon_deg - +$('lon').value) < 1e-6);
   $('site').value = match >= 0 ? match : '';
@@ -503,7 +524,21 @@ async function start() {
   $('err').textContent = '';
   try {
     await loadSites();
+    const link = state.link;
+    if (link?.get('view') === 'compare' && state.view !== 'compare') {
+      state.view = 'compare';
+      document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === 'compare')));
+      document.querySelectorAll('[data-only]').forEach(el => { el.hidden = el.dataset.only !== 'compare'; });
+    }
     await run();
+    const focus = { slips: 'slips', pano: 'pano-panel', sky: 'sky' }[link?.get('focus')];
+    if (focus) { // the slip panel loads after the main view, so wait until the target is shown
+      const t0 = Date.now(), tick = () => {
+        if ($(focus).offsetParent) $(focus).scrollIntoView({ block: 'start' });
+        else if (Date.now() - t0 < 8000) setTimeout(tick, 150);
+      };
+      tick();
+    }
   } catch (e) {
     $('err').textContent = e.message;
     $('server').open = true;
