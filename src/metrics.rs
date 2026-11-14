@@ -44,6 +44,12 @@ pub struct Summary {
     pub next_earthset: Option<String>,
     pub hours_to_sunset: Option<f64>,
     pub hours_to_earthset: Option<f64>,
+    /// First time after the start when the Sun starts to rise / Earth's centre clears the
+    /// skyline + margin, after having been down. Null if it is already up and stays up.
+    pub next_sunrise: Option<String>,
+    pub next_earthrise: Option<String>,
+    pub hours_to_sunrise: Option<f64>,
+    pub hours_to_earthrise: Option<f64>,
     pub sunlight_windows: Vec<Window>,
     pub dte_windows: Vec<Window>,
 }
@@ -152,6 +158,13 @@ pub fn summarize(points: &[TrackPoint], step_hours: f64, dte_margin_deg: f64) ->
         let up = on.iter().position(|&b| b)?;
         on[up..].iter().position(|&b| !b).map(|i| i + up)
     };
+    let first_on = |on: &[bool]| {
+        // Only a "rise" if it was down at some point before coming up.
+        let down = on.iter().position(|&b| !b)?;
+        on[down..].iter().position(|&b| b).map(|i| i + down)
+    };
+    let next_sunrise = first_on(&sun_on);
+    let next_earthrise = first_on(&dte_on);
     let next_sunset = first_off(&sun_on);
     let next_earthset = first_off(&dte_on);
 
@@ -165,6 +178,10 @@ pub fn summarize(points: &[TrackPoint], step_hours: f64, dte_margin_deg: f64) ->
         next_earthset: next_earthset.map(|i| points[i].t.clone()),
         hours_to_sunset: next_sunset.map(|i| i as f64 * step_hours),
         hours_to_earthset: next_earthset.map(|i| i as f64 * step_hours),
+        next_sunrise: next_sunrise.map(|i| points[i].t.clone()),
+        next_earthrise: next_earthrise.map(|i| points[i].t.clone()),
+        hours_to_sunrise: next_sunrise.map(|i| i as f64 * step_hours),
+        hours_to_earthrise: next_earthrise.map(|i| i as f64 * step_hours),
         sunlight_windows,
         dte_windows,
     }
@@ -277,5 +294,44 @@ mod remask_tests {
                 y.el_deg
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod rise_tests {
+    use super::*;
+
+    fn pt(i: usize, sun_up: bool, earth_up: bool) -> TrackPoint {
+        let d = |el: f64| AzEl {
+            az_deg: 0.0,
+            el_deg: el,
+            radius_deg: 0.27,
+            distance_km: 1.0,
+        };
+        TrackPoint {
+            t: format!("T{i}"),
+            sun: d(0.0),
+            earth: d(if earth_up { 1.0 } else { -1.0 }),
+            sun_horizon_deg: 0.0,
+            earth_horizon_deg: 0.0,
+            sun_vis: if sun_up { 1.0 } else { 0.0 },
+            earth_vis: 0.0,
+        }
+    }
+
+    #[test]
+    fn rise_and_set_times() {
+        let up = [false, false, true, true, false];
+        let pts: Vec<_> = up.iter().enumerate().map(|(i, &u)| pt(i, u, !u)).collect();
+        let s = summarize(&pts, 2.0, 0.0);
+        assert_eq!(s.next_sunrise.as_deref(), Some("T2"));
+        assert_eq!(s.hours_to_sunrise, Some(4.0));
+        assert_eq!(s.next_sunset.as_deref(), Some("T4"));
+        // Earth is up at the start: earthset first, then earthrise.
+        assert_eq!(s.next_earthset.as_deref(), Some("T2"));
+        assert_eq!(s.next_earthrise.as_deref(), Some("T4"));
+        // Always up: no rise.
+        let pts: Vec<_> = (0..4).map(|i| pt(i, true, true)).collect();
+        assert_eq!(summarize(&pts, 1.0, 0.0).next_sunrise, None);
     }
 }

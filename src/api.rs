@@ -36,6 +36,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/sites", get(sites))
         .route("/api/track", get(track))
         .route("/api/best_nearby", get(best_nearby))
+        .route("/api/compare", get(compare))
         .with_state(state)
 }
 
@@ -236,6 +237,136 @@ pub fn compute_best_nearby(
         top: all.into_iter().take(5).collect(),
         radius_m: q.radius_m,
         grid_m: q.grid_m,
+    })
+}
+
+/// Sites and options for `/api/compare`; time and observer options come from `TrackQuery`
+/// fields (`start`, `days`, `step_min`, `alt_m`, `dte_margin_deg`).
+#[derive(Debug, Deserialize)]
+pub struct CompareQuery {
+    /// Comma-separated 0-based indices into `/api/sites`, e.g. `0,5,7`.
+    #[serde(default)]
+    pub ids: Option<String>,
+    /// Custom points `lat,lon;lat,lon` (east-positive longitude).
+    #[serde(default)]
+    pub sites: Option<String>,
+    pub start: String,
+    #[serde(default = "default_days")]
+    pub days: f64,
+    #[serde(default = "default_step")]
+    pub step_min: f64,
+    #[serde(default)]
+    pub alt_m: f64,
+    #[serde(default)]
+    pub dte_margin_deg: f64,
+}
+
+/// Most sites per comparison.
+pub const MAX_COMPARE: usize = 6;
+
+#[derive(Serialize)]
+pub struct CompareEntry {
+    /// Index into `/api/sites` (for `ids`), else null.
+    pub id: Option<usize>,
+    pub name: Option<String>,
+    pub site: Site,
+    pub horizon_source: String,
+    pub ground_m: Option<f64>,
+    pub summary: Summary,
+}
+
+#[derive(Serialize)]
+pub struct CompareResponse {
+    pub entries: Vec<CompareEntry>,
+    /// Indices into `entries`, best first by `summary.sun_mean_fraction`.
+    pub rank_by_sun: Vec<usize>,
+    /// Indices into `entries`, best first by `summary.earth_visible_pct`.
+    pub rank_by_earth: Vec<usize>,
+}
+
+async fn compare(State(s): State<Arc<AppState>>, Query(q): Query<CompareQuery>) -> Response {
+    match tokio::task::spawn_blocking(move || compute_compare(&s, &q)).await {
+        Ok(Ok(resp)) => Json(resp).into_response(),
+        Ok(Err(msg)) => (StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// Summaries for several sites over the same period, plus rankings.
+pub fn compute_compare(s: &AppState, q: &CompareQuery) -> Result<CompareResponse, String> {
+    let mut targets: Vec<(Option<usize>, Option<String>, f64, f64)> = Vec::new();
+    for id in q.ids.iter().flat_map(|v| v.split(',')).map(str::trim) {
+        if id.is_empty() {
+            continue;
+        }
+        let i: usize = id.parse().map_err(|_| format!("bad id '{id}'"))?;
+        let n = s
+            .sites
+            .get(i)
+            .ok_or_else(|| format!("id {i} out of range (0..{})", s.sites.len()))?;
+        targets.push((Some(i), Some(n.name.clone()), n.lat_deg, n.lon_deg));
+    }
+    for p in q.sites.iter().flat_map(|v| v.split(';')).map(str::trim) {
+        if p.is_empty() {
+            continue;
+        }
+        let (a, b) = p
+            .split_once(',')
+            .ok_or_else(|| format!("bad site '{p}', want lat,lon"))?;
+        let lat = a.trim().parse().map_err(|_| format!("bad lat in '{p}'"))?;
+        let lon = b.trim().parse().map_err(|_| format!("bad lon in '{p}'"))?;
+        targets.push((None, None, lat, lon));
+    }
+    if targets.is_empty() || targets.len() > MAX_COMPARE {
+        return Err(format!(
+            "need 1..={MAX_COMPARE} sites via ids=0,5 and/or sites=lat,lon;lat,lon"
+        ));
+    }
+    // Sites are independent: one thread each (at most MAX_COMPARE).
+    let entries = std::thread::scope(|scope| {
+        let handles: Vec<_> = targets
+            .into_iter()
+            .map(|t| scope.spawn(move || compare_one(s, q, t)))
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| h.join().map_err(|_| "worker panicked".to_string())?)
+            .collect::<Result<Vec<_>, String>>()
+    })?;
+    let rank = |key: fn(&Summary) -> f64| {
+        let mut idx: Vec<usize> = (0..entries.len()).collect();
+        idx.sort_by(|&a, &b| key(&entries[b].summary).total_cmp(&key(&entries[a].summary)));
+        idx
+    };
+    Ok(CompareResponse {
+        rank_by_sun: rank(|s| s.sun_mean_fraction),
+        rank_by_earth: rank(|s| s.earth_visible_pct),
+        entries,
+    })
+}
+
+fn compare_one(
+    s: &AppState,
+    q: &CompareQuery,
+    (id, name, lat, lon): (Option<usize>, Option<String>, f64, f64),
+) -> Result<CompareEntry, String> {
+    let tq = TrackQuery {
+        lat,
+        lon,
+        alt_m: q.alt_m,
+        start: q.start.clone(),
+        days: q.days,
+        step_min: q.step_min,
+        dte_margin_deg: q.dte_margin_deg,
+    };
+    let r = compute_track(s, &tq)?;
+    Ok(CompareEntry {
+        id,
+        name,
+        site: r.site,
+        horizon_source: r.horizon.source,
+        ground_m: r.horizon.ground_m,
+        summary: r.summary,
     })
 }
 
