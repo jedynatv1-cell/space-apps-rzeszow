@@ -114,6 +114,8 @@ data/sites.json ─────────────────────�
 - `start`: `2026-11-14`, `2026-11-14T06:30` lub `2026-11-14T06:30:00Z` (UTC).
 - limity: `step_min >= 1`, `0 < days <= 400`, max 20 000 punktów.
 - odpowiedź: `{ site, horizon: {az_step_deg, elev_deg[720], source: "sphere" | "lola:<produkt>", ground_m?}, summary: {...}, points: [{t, sun:{az_deg,el_deg,radius_deg,distance_km}, earth:{...}, sun_horizon_deg, earth_horizon_deg, sun_vis, earth_vis}] }`
+`GET /api/best_nearby?lat=&lon=&start=&days=&step_min=[&alt_m][&radius_m=500][&grid_m=100]` → `{center, best, top[5], candidates_evaluated, radius_m, grid_m}`, kandydat: `{lat_deg, lon_deg, distance_m, ground_m, sun_visible_pct, sun_mean_fraction, earth_visible_pct, longest_night_hours}`; limity: promień ≤ 3000 m, siatka ≥ 40 m, ≤ 400 kandydatów; 400 poza DEM; ~15 s dla roku co 1 h (PR #13).
+
 - `horizon.ground_m`: wysokość terenu pod obserwatorem (m względem sfery 1737,4 km), tylko dla maski z terenu; obserwator stoi `alt_m` nad gruntem.
 - `summary`: `sun_mean_fraction, sun_visible_pct, earth_visible_pct, longest_night_hours, longest_dte_gap_hours, next_sunset, next_earthset, hours_to_sunset, hours_to_earthset, sunlight_windows[], dte_windows[]`.
 

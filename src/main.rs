@@ -4,7 +4,6 @@
 //! Env: PORT (3000), KERNEL_DIR (data/raw/kernels), DEM_DIR (data/raw/dem), SITES (data/sites.json)
 
 mod api;
-#[allow(dead_code)] // TODO(W1): remove once horizon::from_dem uses the reader
 mod dem;
 mod ephem;
 mod horizon;
