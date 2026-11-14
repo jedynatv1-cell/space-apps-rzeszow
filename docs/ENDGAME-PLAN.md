@@ -8,7 +8,8 @@
 >    ```bash
 >    gh repo clone jedynatv1-cell/space-apps-rzeszow navigator
 >    cd navigator
->    sudo tailscale up --authkey=<TEAM_KEY> --hostname=laptop-l6
+>    # Windows: powershell -ExecutionPolicy Bypass -File .claudescripts	ailscale-join.ps1
+   # Linux:   sudo tailscale login --hostname=laptop-l6   (sign in with GitHub, team account)
 >    ```
 > 3. **On L6 (Playwright for automated 1080p screen recording):**
 >    ```bash
@@ -58,9 +59,9 @@ At the lunar south pole, there is no atmosphere and no twilight. Because the Sun
 - **Instant Mission Verdict (Public & Expert Modes):** Evaluates any site and date into a traffic-light verdict (**Good / Marginal / Poor**) for solar power and direct-to-Earth (DTE) communications, with plain-language explanations for learners and full topocentric telemetry (`az`, `el`, visible disk fraction, link gaps, CSV export) for engineers.
 - **Polar Sky Plot & First-of-Its-Kind 360° LOLA Horizon Panorama:** Renders the 360° surrounding mountain and crater silhouette from NASA LRO LOLA Digital Elevation Models (`40 m/px` south of 80°S, chained with `120 m/px` up to 75°S out to 300 km), plotting the true-scale solar and terrestrial disks and Earth's monthly libration loop.
 - **Launch-Slip Re-Planning (`+1 / +7 / +30 Days`):** Automatically computes how a delayed launch changes sunlight percentage, Earth visibility, and longest darkness (e.g., showing that a +7 day slip at Shackleton Rim over a 14-day sortie boosts sunlight from **54.6% to 93.8%**).
-- **500 m Micro-Relocation Optimizer (`Best Spot Within 500 m`):** Ray-marches a 100 m grid around the target coordinates to find nearby ridges with dramatically better lighting (e.g., shifting 255 m at Mons Malapert M1 increases sunlight from **13.6% to 61.7%**).
+- **500 m Micro-Relocation Optimizer (`Best Spot Within 500 m`):** Evaluates a grid of candidate points (50–100 m spacing) around the target to find nearby ridges with dramatically better lighting (e.g., shifting 255 m at Mons Malapert M1 increases sunlight from **13.6% to 61.7%** over 2020, 50 m grid; reproduced on main).
 - **Side-by-Side Multi-Site Comparison:** Compares 2–3 landing sites on a shared radial sky scale and timeline, highlighting the winner (`★`) across 8 power and communication metrics.
-- **Interactive 3D Moon & Solar System View:** A WebGL/Three.js Moon-centered globe using NASA SVS CGI Moon Kit (LROC + LOLA 16-bit displacement/normal maps) showing real-time lunar orientation (Cassini laws), day/night terminator, 365-day planetary trails, and clickable landing sites.
+- **Interactive 3D Moon & Solar System View:** A WebGL/Three.js Moon-centered globe using the NASA SVS CGI Moon Kit (LROC colour mosaic + LOLA 16-bit elevation; the normal map is derived by us) showing lunar orientation from Cassini laws (mean libration), day/night terminator, 365-day planetary trails, and 29 clickable landing sites. 3D positions are display-grade (JPL approximate elements + Meeus); every analysis number comes from the ANISE/DE440s backend.
 
 **HOW IT WORKS (ARCHITECTURE & TECH STACK)**
 - **Rust Backend (`axum` + `ANISE` + `rayon` + `memmap2`):**
@@ -71,7 +72,7 @@ At the lunar south pole, there is no atmosphere and no twilight. Because the Sun
   - High-DPI HTML5 Canvas 2D telemetry console + Three.js 3D view, plus one-click CSV export (`/api/track?...&format=csv`) and offline recorded/demo modes.
 
 **SCIENTIFIC VALIDATION**
-- **Ephemeris vs. NASA JPL Horizons:** Verified across 6 sites (Shackleton, Malapert, Nobile Rim 2, Statio Shiv Shakti, Apollo 11) with maximum azimuth/elevation residual **≤ 0.00005°** (automated CI test pinned to `0.001°`).
+- **Ephemeris vs. NASA JPL Horizons:** Verified at 6 site/time points (Shackleton rim ×2, Malapert, Apollo 11, Statio Shiv Shakti, Nobile Rim 2) with maximum azimuth/elevation residual **≤ 0.00005°** (automated CI test pinned to `0.001°`).
 - **Terrain Illumination vs. Published LOLA Literature:** At Connecting Ridge (`CR1` spots 1 and 3 from Gläser et al. 2014), our LOLA 40 m/px model gives **91.1% and 95.7%** sunlit time vs. published **92.0% and 95.6%** (**≤ 1 percentage point agreement**), whereas a smooth sphere wrongly predicts ~60%.
 
 ### 5. Use of Artificial Intelligence (AI)
@@ -84,9 +85,9 @@ We used AI as an engineering and research assistant; the challenge selection, ph
 - **NASA/JPL NAIF SPICE Kernels:** Planetary ephemeris `de440s.bsp` and lunar orientation `moon_pa_de440_200625.bpc` (https://naif.jpl.nasa.gov/).
 - **NASA JPL Horizons System:** Reference topocentric ephemerides used for automated validation to `0.001°` (https://ssd.jpl.nasa.gov/horizons/).
 - **NASA LRO LOLA Polar Digital Elevation Models (PDS Geosciences Node):** South-polar laser altimetry grids `ldem_80s_40m.img/.lbl` (40 m/px) and `ldem_75s_120m.img/.lbl` (120 m/px) (https://pds-geosciences.wustl.edu/).
-- **NASA SVS CGI Moon Kit (#4720):** LRO LROC color mosaic and LOLA elevation/normal maps used in the 3D Moon globe (https://svs.gsfc.nasa.gov/4720).
+- **NASA SVS CGI Moon Kit (#4720):** LRO LROC colour mosaic and LOLA elevation map used in the 3D Moon globe (https://svs.gsfc.nasa.gov/4720).
 - **LROC NAC Mosaics & Quickmap:** Used to locate proxy coordinates within NASA's Artemis candidate landing regions (https://data.lroc.im-ldi.com/, https://quickmap.lroc.asu.edu/).
-- **NASA GSFC PGDA & NSSDCA:** Lunar polar illumination benchmarks (Mazarico et al. 2011; Barker et al. 2021) and Apollo landing site coordinates (https://pgda.gsfc.nasa.gov/, https://nssdc.gsfc.nasa.gov/planetary/lunar/lunar_sites.html).
+- **NASA GSFC PGDA & NSSDCA:** Lunar polar illumination references (Mazarico et al. 2011; Barker et al. 2021; not used as a validation benchmark) and Apollo landing site coordinates (https://pgda.gsfc.nasa.gov/, https://nssdc.gsfc.nasa.gov/planetary/lunar/lunar_sites.html).
 - **NASA Artemis III/IV Candidate Landing Regions & VIPER Mission Operations:** Operational lighting and DTE constraints (https://www.nasa.gov/, https://science.nasa.gov/mission/viper/).
 
 ### 7. Space Agency Partner & Other Data
@@ -95,15 +96,16 @@ We used AI as an engineering and research assistant; the challenge selection, ph
 - **CNSA:** Chang'e 3, 4 (*Statio Tianhe*), 5 (*Statio Tianchuan*), 6, and planned Chang'e 7 south-pole sites.
 - **IAU / USGS Gazetteer of Planetary Nomenclature:** Official coordinates for lunar craters, massifs, and landing site names (https://planetarynames.wr.usgs.gov/).
 - **Scientific Literature for Validation & Coordinates:**
-  - Gläser, P. et al. (2014), *Connecting Ridge: A landing site at the lunar south pole with extended illumination*, EPSC Abstracts 9.
+  - Gläser, P. et al. (2014), Connecting Ridge illumination values. **[VERIFY exact reference before submitting; likely *Icarus* 243, 78–90, "Illumination conditions at the lunar south pole using high resolution Digital Terrain Models from LOLA"]**
   - Bussey, D.B.J. et al. (2010), *Illumination conditions of the south pole of the Moon derived using Kaguya topography*, Icarus 208.
   - Barker, M.K. et al. (2021), *Improved LOLA elevation maps for south pole landing sites*, Planet. Space Sci. 203.
-  - Wueller, L. et al. (2026), *JGR Planets*, doi:10.1029/2025JE009434 & arXiv:2406.19863 (*Acta Astronautica* 226, 2025).
+  - Wueller, L. et al. (2026), *JGR Planets*, doi:10.1029/2025JE009434 (Nobile Rim 1 position).
+  - arXiv:2406.19863, *Acta Astronautica* 226 (2025): multi-criteria site ranking (Nobile Rim 2 point).
 - **Open-Source Software:** Rust (`axum`, `tokio`, `rayon`, `memmap2`), Nyx Space `ANISE` ephemeris library, Three.js (MIT).
 
 ---
 
-## 3. Online-Verified Criteria for Our "Final Verdict" Badge
+## 3. Criteria for Our "Final Verdict" Badge (our synthesis of published values)
 
 We verified our UI's **Mission Verdict** thresholds ([`web/app.js`](../web/app.js#L287-L321) and [docs/RESEARCH.md §9.1](../docs/RESEARCH.md#L406-L428)) against published NASA & LOLA literature:
 
@@ -111,13 +113,13 @@ We verified our UI's **Mission Verdict** thresholds ([`web/app.js`](../web/app.j
 |---|---|---|---|---|
 | **Sunlight (`sun_visible_pct`)** | **≥ 70%** | **50% – 70%** | **< 50%** | **Barker et al. (2021) / Mazarico et al. (2011):** Elite south-pole ridges exceed `70%` mean lighting (Connecting Ridge reaches `91–96%`). A flat equatorial site is `~50%`. Anything `< 50%` is net-shadowed by crater walls. |
 | **Earth in view / DTE (`earth_visible_pct`)** | **≥ 50%** | **30% – 50%** | **< 30%** | **NASA VIPER Operations & NTRS 20250009323:** Due to the Moon's `±6.8°` latitudinal libration over 27.2 days, an unobstructed polar site sees Earth `~50%` of each month (~14 days up, ~14 days down). `< 30%` means terrain blocks most of the libration arc (requiring an orbital relay). |
-| **Longest night (`longest_night_hours`)** | *Info / Sortie check* (`≤ 50 h` VIPER; `0 h` in 6.5d Artemis) | `50 – 120 h` | `> 120 h` | **NASA Artemis III/IV Sortie Rule:** Requires continuous sunlight over a **6.5-day (`156 h`)** surface sortie. **NASA VIPER Rule:** Rover survives at most **50 hours** of continuous darkness. |
+| **Longest night (`longest_night_hours`)**, shown as info only, not part of the verdict | *Info / Sortie check* (`≤ 50 h` VIPER; `0 h` in 6.5d Artemis) | `50 – 120 h` | `> 120 h` | **NASA Artemis III/IV Sortie Rule:** Requires continuous sunlight over a **6.5-day (`156 h`)** surface sortie. **NASA VIPER Rule:** Rover survives at most **50 hours** of continuous darkness. |
 
 ---
 
 ## 4. Final 4-Hour Execution & Verification Checklist
 
-- [x] **Hour 1 — Unslop `web/` UI + Add CSV Export + 3D→2D Link:** **DONE locally on `feat/ui`!**
+- [x] **Hour 1 — Unslop `web/` UI + Add CSV Export + 3D→2D Link:** **DONE and merged on `main` (PRs #30–#33).**
   - Preview live at `http://localhost:8080/?api=http://100.113.240.51:3000` and `http://localhost:8080/solar.html`.
   - Next step: Commit `web/**`, update log in [docs/COORDINATION.md](../docs/COORDINATION.md), push `feat/ui`, and open PR to `main`.
 - [ ] **Hour 2 — Set up `L6` & Record the ≤ 30s Screen Video (`W5`):**
