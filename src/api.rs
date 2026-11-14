@@ -250,7 +250,15 @@ pub struct CompareQuery {
     /// Custom points `lat,lon;lat,lon` (east-positive longitude).
     #[serde(default)]
     pub sites: Option<String>,
-    pub start: String,
+    /// Start of the period (required unless `starts` is given).
+    #[serde(default)]
+    pub start: Option<String>,
+    /// Date-slip mode: several starts for ONE site, e.g. `2026-11-14,2026-11-21`.
+    #[serde(default)]
+    pub starts: Option<String>,
+    /// Date-slip mode: day offsets from `start` for ONE site, e.g. `0,1,7,30`.
+    #[serde(default)]
+    pub offsets_days: Option<String>,
     #[serde(default = "default_days")]
     pub days: f64,
     #[serde(default = "default_step")]
@@ -264,6 +272,9 @@ pub struct CompareQuery {
 /// Most sites per comparison.
 pub const MAX_COMPARE: usize = 6;
 
+/// Most dates per date-slip comparison.
+pub const MAX_DATES: usize = 12;
+
 #[derive(Serialize)]
 pub struct CompareEntry {
     /// Index into `/api/sites` (for `ids`), else null.
@@ -272,11 +283,15 @@ pub struct CompareEntry {
     pub site: Site,
     pub horizon_source: String,
     pub ground_m: Option<f64>,
+    /// Start of this entry's period (ISO UTC).
+    pub start: String,
     pub summary: Summary,
 }
 
 #[derive(Serialize)]
 pub struct CompareResponse {
+    /// "sites" (several sites, one period) or "dates" (one site, several starts).
+    pub mode: &'static str,
     pub entries: Vec<CompareEntry>,
     /// Indices into `entries`, best first by `summary.sun_mean_fraction`.
     pub rank_by_sun: Vec<usize>,
@@ -322,11 +337,20 @@ pub fn compute_compare(s: &AppState, q: &CompareQuery) -> Result<CompareResponse
             "need 1..={MAX_COMPARE} sites via ids=0,5 and/or sites=lat,lon;lat,lon"
         ));
     }
-    // Sites are independent: one thread each (at most MAX_COMPARE).
+    let starts = compare_starts(q)?;
+    let dates_mode = q.starts.is_some() || q.offsets_days.is_some();
+    if dates_mode && targets.len() != 1 {
+        return Err("starts/offsets_days compare dates for exactly one site".into());
+    }
+    let jobs: Vec<_> = starts
+        .iter()
+        .flat_map(|st| targets.iter().map(move |t| (t.clone(), st.clone())))
+        .collect();
+    // Entries are independent: one thread each (at most MAX_COMPARE or MAX_DATES).
     let entries = std::thread::scope(|scope| {
-        let handles: Vec<_> = targets
+        let handles: Vec<_> = jobs
             .into_iter()
-            .map(|t| scope.spawn(move || compare_one(s, q, t)))
+            .map(|(t, st)| scope.spawn(move || compare_one(s, q, t, st)))
             .collect();
         handles
             .into_iter()
@@ -339,6 +363,7 @@ pub fn compute_compare(s: &AppState, q: &CompareQuery) -> Result<CompareResponse
         idx
     };
     Ok(CompareResponse {
+        mode: if dates_mode { "dates" } else { "sites" },
         rank_by_sun: rank(|s| s.sun_mean_fraction),
         rank_by_earth: rank(|s| s.earth_visible_pct),
         entries,
@@ -349,12 +374,13 @@ fn compare_one(
     s: &AppState,
     q: &CompareQuery,
     (id, name, lat, lon): (Option<usize>, Option<String>, f64, f64),
+    start: String,
 ) -> Result<CompareEntry, String> {
     let tq = TrackQuery {
         lat,
         lon,
         alt_m: q.alt_m,
-        start: q.start.clone(),
+        start: start.clone(),
         days: q.days,
         step_min: q.step_min,
         dte_margin_deg: q.dte_margin_deg,
@@ -366,8 +392,46 @@ fn compare_one(
         site: r.site,
         horizon_source: r.horizon.source,
         ground_m: r.horizon.ground_m,
+        start,
         summary: r.summary,
     })
+}
+
+/// Start times of a comparison (ISO UTC): `starts`, or `start` + each of
+/// `offsets_days`, or just `start`.
+fn compare_starts(q: &CompareQuery) -> Result<Vec<String>, String> {
+    let list = |v: &str| -> Vec<String> {
+        v.split(',')
+            .map(str::trim)
+            .filter(|x| !x.is_empty())
+            .map(String::from)
+            .collect()
+    };
+    let epochs: Vec<Epoch> = if let Some(v) = &q.starts {
+        list(v)
+            .iter()
+            .map(|x| parse_utc(x))
+            .collect::<Result<_, _>>()?
+    } else {
+        let base = parse_utc(q.start.as_deref().ok_or("missing start (or starts)")?)?;
+        match &q.offsets_days {
+            Some(v) => list(v)
+                .iter()
+                .map(|x| {
+                    let d: f64 = x.parse().map_err(|_| format!("bad offset '{x}'"))?;
+                    if d.abs() > 3660.0 {
+                        return Err(format!("offset {d} days out of range"));
+                    }
+                    Ok(base + Unit::Day * d)
+                })
+                .collect::<Result<_, String>>()?,
+            None => vec![base],
+        }
+    };
+    if epochs.is_empty() || epochs.len() > MAX_DATES {
+        return Err(format!("need 1..={MAX_DATES} starts"));
+    }
+    Ok(epochs.into_iter().map(metrics::iso).collect())
 }
 
 /// Parse a UTC timestamp, accepting date-only and minute-precision forms.
@@ -396,5 +460,32 @@ mod tests {
             Epoch::from_gregorian_utc_at_midnight(2026, 11, 14)
         );
         assert!(parse_utc("yesterday").is_err());
+    }
+
+    fn cq(start: Option<&str>, starts: Option<&str>, offsets: Option<&str>) -> CompareQuery {
+        CompareQuery {
+            ids: None,
+            sites: None,
+            start: start.map(String::from),
+            starts: starts.map(String::from),
+            offsets_days: offsets.map(String::from),
+            days: 30.0,
+            step_min: 60.0,
+            alt_m: 0.0,
+            dte_margin_deg: 0.0,
+        }
+    }
+
+    #[test]
+    fn compare_start_lists() {
+        let one = compare_starts(&cq(Some("2026-11-14"), None, None)).unwrap();
+        assert_eq!(one, ["2026-11-14T00:00:00Z"]);
+        let off = compare_starts(&cq(Some("2026-11-14T06:00"), None, Some("0, 1,7,30"))).unwrap();
+        assert_eq!(off[1], "2026-11-15T06:00:00Z");
+        assert_eq!(off[3], "2026-12-14T06:00:00Z");
+        let st = compare_starts(&cq(None, Some("2026-11-14,2026-12-14"), None)).unwrap();
+        assert_eq!(st.len(), 2);
+        assert!(compare_starts(&cq(None, None, Some("0,1"))).is_err());
+        assert!(compare_starts(&cq(Some("2026-11-14"), None, Some("x"))).is_err());
     }
 }
