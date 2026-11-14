@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lunar Landing Site Navigator</title>
-<link rel="stylesheet" href="app.css?v=20261114c">
+<link rel="stylesheet" href="app.css?v=20261114d">
 </head>
 <body>
 <header>
@@ -97,6 +97,11 @@
         <div class="grid" id="metrics"></div>
       </div>
     </div>
+    <div class="panel" id="pano-panel">
+      <div class="bp-head"><h2>Horizon panorama</h2><small id="pano-read">hover to read the horizon height</small></div>
+      <canvas id="pano" aria-label="360 degree horizon panorama"></canvas>
+      <p class="hint" id="pano-note"></p>
+    </div>
     <div class="panel" id="slips" hidden>
       <div class="bp-head"><h2>If the landing slips</h2><small id="slips-note"></small></div>
       <table id="slips-table"></table>
@@ -116,8 +121,8 @@
 
 <footer>Elevations relative to the local tangent plane of the 1737.4 km sphere; azimuth clockwise from north; times in UTC. Horizon: <span id="hz-source">—</span>.</footer>
 
-<script src="sky.js?v=20261114c"></script>
-<script src="mock.js?v=20261114c"></script>
-<script src="app.js?v=20261114c"></script>
+<script src="sky.js?v=20261114d"></script>
+<script src="mock.js?v=20261114d"></script>
+<script src="app.js?v=20261114d"></script>
 </body>
 </html>

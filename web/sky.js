@@ -252,3 +252,89 @@ function drawTimeline(canvas, data, idx, opts = {}) {
   g.strokeStyle = COLORS.cursor; g.lineWidth = 1.5;
   g.beginPath(); g.moveTo(cx, 2); g.lineTo(cx, h - axisH); g.stroke();
 }
+
+/**
+ * 360° horizon panorama: azimuth on x (N-E-S-W-N), elevation on y. LOLA skyline as terrain,
+ * Sun/Earth paths over the window, and both disks at the cursor time (true angular size, drawn as
+ * ellipses because the vertical scale is stretched). Terrain is drawn last so it hides the bodies.
+ * Returns the layout so callers can map the mouse back to azimuth.
+ */
+function drawPanorama(canvas, data, idx) {
+  const { g, w, h } = setupCanvas(canvas);
+  const left = 34, right = 8, top = 8, bottom = 20;
+  const mask = data.horizon, pts = data.points, n = mask.elev_deg.length;
+  let tMin = Infinity, tMax = -Infinity;
+  for (const e of mask.elev_deg) { tMin = Math.min(tMin, e); tMax = Math.max(tMax, e); }
+  let bMax = 2;
+  for (const p of pts) for (const b of [p.sun, p.earth]) if (b.el_deg > tMin - 3) bMax = Math.max(bMax, b.el_deg + b.radius_deg);
+  const lo = Math.max(-10, Math.floor(Math.min(tMin, -1)) - 0.5), hi = Math.min(90, Math.ceil(Math.max(tMax, bMax)) + 1);
+  const W = w - left - right, H = h - top - bottom;
+  const xs = W / 360, ys = H / (hi - lo);
+  const x = az => left + (((az % 360) + 360) % 360) * xs;
+  const y = el => top + (hi - el) * ys;
+
+  const grad = g.createLinearGradient(0, top, 0, top + H);
+  grad.addColorStop(0, COLORS.skyEdge); grad.addColorStop(1, COLORS.sky);
+  g.fillStyle = grad; g.fillRect(left, top, W, H);
+
+  g.font = '11px system-ui'; g.fillStyle = COLORS.label; g.lineWidth = 1;
+  const step = niceStep(hi - lo);
+  for (let el = Math.ceil(lo / step) * step; el <= hi; el += step) {
+    g.strokeStyle = el === 0 ? '#5b6680' : COLORS.grid;
+    g.setLineDash(el === 0 ? [4, 4] : []);
+    g.beginPath(); g.moveTo(left, y(el)); g.lineTo(left + W, y(el)); g.stroke();
+    g.fillText(`${+el.toFixed(1)}°`, 2, y(el) + 4);
+  }
+  g.setLineDash([]);
+  g.textAlign = 'center';
+  for (let az = 0; az <= 360; az += 45) {
+    g.strokeStyle = COLORS.grid;
+    g.beginPath(); g.moveTo(left + az * xs, top); g.lineTo(left + az * xs, top + H); g.stroke();
+    g.fillText(['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'N'][az / 45], left + az * xs, h - 5);
+  }
+  g.textAlign = 'start';
+
+  g.save(); g.beginPath(); g.rect(left, top, W, H); g.clip();
+  const path = (key, color) => {
+    g.strokeStyle = color; g.globalAlpha = 0.45; g.lineWidth = 1.5; g.beginPath();
+    let prev = null;
+    for (const p of pts) {
+      const b = p[key];
+      const jump = prev && Math.abs(b.az_deg - prev.az_deg) > 180;
+      if (!prev || jump) g.moveTo(x(b.az_deg), y(b.el_deg)); else g.lineTo(x(b.az_deg), y(b.el_deg));
+      prev = b;
+    }
+    g.stroke(); g.globalAlpha = 1;
+  };
+  path('sun', COLORS.sun);
+  path('earth', COLORS.earth);
+
+  const p = pts[Math.max(0, Math.min(pts.length - 1, Math.round(idx)))];
+  const disk = (b, color, glow) => {
+    const rx = Math.max(2.5, b.radius_deg * xs), ry = Math.max(2.5, b.radius_deg * ys);
+    for (const off of [0, -360, 360]) { // draw wrapped copies near the N edge
+      const cx = left + (((b.az_deg % 360) + 360) % 360 + off) * xs, cy = y(b.el_deg);
+      if (cx < left - rx || cx > left + W + rx) continue;
+      if (glow) {
+        const gg = g.createRadialGradient(cx, cy, 0, cx, cy, ry * 3 + 8);
+        gg.addColorStop(0, 'rgba(255,176,0,0.4)'); gg.addColorStop(1, 'rgba(255,176,0,0)');
+        g.fillStyle = gg; g.beginPath(); g.arc(cx, cy, ry * 3 + 8, 0, 2 * Math.PI); g.fill();
+      }
+      g.fillStyle = color; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI); g.fill();
+    }
+  };
+  if (p) { disk(p.earth, COLORS.earth, false); disk(p.sun, COLORS.sun, true); }
+
+  g.beginPath(); g.moveTo(left, top + H);
+  for (let i = 0; i <= n; i++) g.lineTo(left + i * mask.az_step_deg * xs, y(mask.elev_deg[i % n]));
+  g.lineTo(left + W, top + H); g.closePath();
+  g.fillStyle = COLORS.terrain; g.fill();
+  g.strokeStyle = COLORS.terrainEdge; g.beginPath();
+  for (let i = 0; i <= n; i++) {
+    const X = left + i * mask.az_step_deg * xs, Y = y(mask.elev_deg[i % n]);
+    i ? g.lineTo(X, Y) : g.moveTo(X, Y);
+  }
+  g.stroke();
+  g.restore();
+  return { left, W, xs, ys, exaggeration: ys / xs };
+}
