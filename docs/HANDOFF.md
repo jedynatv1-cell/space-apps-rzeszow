@@ -35,7 +35,7 @@ gh repo clone jedynatv1-cell/space-apps-rzeszow
 | `data/raw/kernels/moon_fk_de440.epa` | 286 | http://public-data.nyxspace.com/anise/v0.7/moon_fk_de440.epa |
 | `data/raw/dem/ldem_80s_40m.img` | **462 080 000** ✅ | `https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_80s_40m.img` |
 | `data/raw/dem/ldem_80s_40m.lbl` | 4 991 | ta sama ścieżka, `.lbl` |
-| `data/raw/dem/ldem_75s_120m.img` | 116 250 752 (oczekiwany) | ta sama ścieżka, `ldem_75s_120m.img`. W chwili pisania jeszcze się pobierał, sprawdź rozmiar |
+| `data/raw/dem/ldem_75s_120m.img` | **116 250 752** ✅ | ta sama ścieżka, `ldem_75s_120m.img` (7624 × 7624, 120 m/pix) |
 | `data/raw/dem/ldem_75s_120m.lbl` | 4 991 | jw. |
 
 Bez kerneli serwer **nie wystartuje** (czytelny błąd z listą plików). Bez DEM wszystko działa, tylko horyzont jest sferyczny.
@@ -98,7 +98,7 @@ Weryfikacja na żywo (14.11):
 8b57167 Add CI workflow and line-ending rules
 ac97a80 Initial project setup for Space Apps Rzeszow
 ```
-CI dla `2c76890` było w trakcie w chwili pisania (pierwszy build z zależnościami). Sprawdź: `gh run list --limit 3`.
+CI ✅ zielone dla `2f48e76` (szkielet + dokumentacja): fmt, clippy, testy. Test vs Horizons w CI się pomija (brak kerneli na runnerze); lokalnie przechodzi. Uwaga: GitHub ostrzega, że `actions/checkout@v4` działa na wycofywanym Node 20. Na razie działa, później można podbić wersję. Stan: `gh run list --limit 3`.
 
 ## 5. Architektura i kontrakt API
 
