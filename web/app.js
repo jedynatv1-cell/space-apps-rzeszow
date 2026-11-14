@@ -114,9 +114,17 @@ function trackQuery(lat, lon) {
   });
 }
 
+function setBusy(on) {
+  $('busy').hidden = !on;
+  document.querySelector('main').classList.toggle('loading', on);
+  $('f').querySelector('button[type=submit]').disabled = on;
+}
+
 async function run() {
   const req = ++state.req;
   $('err').textContent = '';
+  // Only show the spinner if the answer is not instant (cached responses come back in ~0.1 s).
+  const busyTimer = setTimeout(() => { if (req === state.req) setBusy(true); }, 250);
   try {
     if (state.view === 'explore') {
       const data = await api(trackQuery($('lat').value, $('lon').value));
@@ -136,6 +144,9 @@ async function run() {
     render();
   } catch (e) {
     if (req === state.req) $('err').textContent = e.message;
+  } finally {
+    clearTimeout(busyTimer);
+    if (req === state.req) setBusy(false);
   }
 }
 

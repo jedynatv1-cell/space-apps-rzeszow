@@ -31,15 +31,18 @@ function horizonAt(mask, az) {
 /** Elevation range shown by the sky plot: [lo at the rim, hi at the centre]. */
 function skyRange(datas, full) {
   if (full) return { lo: -5, hi: 90 };
-  let lo = -1, hi = 2;
+  // Scale to the bodies, not the terrain: with a real LOLA skyline (up to ~20° at polar sites) a
+  // terrain-based centre would squeeze the near-horizon Sun. Terrain above `hi` simply fills the plot
+  // towards the centre, which reads correctly as "blocked in that direction".
+  let lo = -1, hi = 5;
   for (const d of datas) {
-    for (const e of d.horizon.elev_deg) { lo = Math.min(lo, e); hi = Math.max(hi, e); }
+    for (const e of d.horizon.elev_deg) lo = Math.min(lo, e);
     for (const p of d.points) {
       if (p.sun.el_deg > -3) hi = Math.max(hi, p.sun.el_deg + p.sun.radius_deg);
       if (p.earth.el_deg > -3) hi = Math.max(hi, p.earth.el_deg + p.earth.radius_deg);
     }
   }
-  return { lo: Math.floor(lo) - 1, hi: Math.min(90, Math.ceil(hi) + 1) };
+  return { lo: Math.max(-8, Math.floor(lo) - 1), hi: Math.min(90, Math.ceil(hi) + 2) };
 }
 
 function niceStep(span) {
@@ -60,7 +63,7 @@ function drawSky(canvas, data, idx, opts = {}) {
   const margin = compact ? 14 : 22;
   const R = Math.min(w, h) / 2 - margin, cx = w / 2, cy = h / 2;
   const span = range.hi - range.lo;
-  const rOf = el => R * (range.hi - el) / span;
+  const rOf = el => Math.max(0, R * (range.hi - el) / span); // above range.hi collapses to the centre
   const xy = (az, el) => {
     const r = rOf(el), a = az * Math.PI / 180;
     return [cx + r * Math.sin(a), cy - r * Math.cos(a)];
