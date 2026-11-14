@@ -31,7 +31,14 @@ Do zapytania organizatora (hackathon@pcinn.org, Kacper Moczarny):
 | Logistyka | Zero sprzętu, da się nagrać ponownie skryptem | Światło, dźwięk w hałaśliwej sali, nagrywanie ponownych ujęć |
 | Poprawki po zmianie UI | Uruchamiasz skrypt jeszcze raz | Trzeba nagrywać od nowa |
 
-Jeśli chcecie ludzkiego akcentu: **2 sekundy z telefonu** (zdjęcie zespołu albo krótkie ujęcie przy stanowisku, tylko osoby pełnoletnie) wystarczą na ujęcie 0:00–0:02. Telefon w zupełności wystarczy, dedykowana kamera nic tu nie da.
+### ✅ DECYZJA (14.11): w zespole jest osoba poniżej 18 lat, więc nagrywamy WYŁĄCZNIE ekran
+
+Regulamin zgłoszenia: *demo i projekt nie mogą zawierać obrazów, wideo, **audio** ani innego wizerunku osób poniżej 18 lat*. Dlatego:
+- **żadnych twarzy ani zdjęć zespołu** w filmie, na slajdach i na stronie projektu (także zdjęć „w tle” przy stanowisku);
+- **głos lektora:** tylko osoba pełnoletnia albo syntezator mowy (wtedy oznaczyć jako SI w opisie i metadanych); najprościej **same napisy + muzyka**;
+- **imiona i nazwiska** zespołu na slajdzie są OK (to nie wizerunek);
+- zrzuty ekranu i nagrania pulpitu: sprawdzić, czy nie widać kamerki, awatara ani zdjęcia profilowego (np. w GitHubie, Discordzie, pasku zadań);
+- na wydarzeniu: osoba niepełnoletnia musi mieć **podpisaną zgodę opiekuna** (formularz „Zgoda na udział osób niepełnoletnich” ze strony wydarzenia Rzeszów). Na pitchu na żywo o 13:00 może normalnie prezentować, bo to nie jest nagranie w zgłoszeniu.
 
 Na **pitch lokalny na żywo** kamera też nie jest potrzebna: laptop + HDMI + aplikacja działająca **offline** (kernele i DEM lokalnie) + wideo zapasowe na pendrive.
 
@@ -77,7 +84,7 @@ Plan awaryjny bez skryptu: **Win + Alt + R** (Xbox Game Bar nagrywa okno przegl�
 
 | Czas | Obraz | Napis (EN) |
 |---|---|---|
-| 0:00–0:02 | Plansza tytułowa / zdjęcie zespołu | *Team <nazwa> · NASA Space Apps Rzeszów 2026* |
+| 0:00–0:02 | Plansza tytułowa (tekst + grafika Księżyca, **bez zdjęć osób**) | *Team <nazwa> · NASA Space Apps Rzeszów 2026* |
 | 0:02–0:05 | Biegun płd. Księżyca (obraz LRO/Quickmap, z podaniem źródła) | *At the lunar south pole, the Sun and Earth skim the horizon.* |
 | 0:05–0:10 | Ekran startowy aplikacji | *<Nazwa>: compare landing sites and dates in seconds.* |
 | 0:10–0:15 | Shackleton: przełącznik teren wył./wł., Słońce chowa się za grzbietem | *Real LOLA terrain decides power and comms.* |
@@ -85,7 +92,7 @@ Plan awaryjny bez skryptu: **Win + Alt + R** (Xbox Game Bar nagrywa okno przegl�
 | 0:20–0:25 | Porównanie 2–3 miejsc obok siebie | *Validated against NASA JPL Horizons to 0.001°.* |
 | 0:25–0:30 | Plansza końcowa | *For mission planners, educators and everyone curious.* |
 
-Zasady: wszystko po angielsku (głos może być po polsku, ale wtedy napisy EN są obowiązkowe). **Bez logo NASA.** Jeśli głos lub muzyka są z AI, trzeba to zaznaczyć w opisie i metadanych. Muzyka tylko na wolnej licencji i z wpisem w *References*. Film wrzucamy na YouTube jako **niepubliczny (unlisted)**: link działa bez logowania.
+Zasady: wszystko po angielsku (głos może być po polsku, ale wtedy napisy EN są obowiązkowe). Głos tylko osoby 18+ albo z syntezatora (oznaczony jako SI), domyślnie **same napisy**. **Bez logo NASA.** Jeśli głos lub muzyka są z AI, trzeba to zaznaczyć w opisie i metadanych. Muzyka tylko na wolnej licencji i z wpisem w *References*. Film wrzucamy na YouTube jako **niepubliczny (unlisted)**: link działa bez logowania.
 
 Alternatywa dopuszczona przez regulamin: **≤ 7 slajdów**. Warto mieć oba formaty, bo slajdy przydadzą się też na pitch lokalny.
 

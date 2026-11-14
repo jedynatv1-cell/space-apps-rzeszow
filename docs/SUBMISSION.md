@@ -37,7 +37,7 @@ Harmonogram ze strony wydarzenia Rzeszów (✅ sprawdzony 14.11). Pełny plan dn
 - **Bez logo NASA**, flag i identyfikatorów misji w treściach generowanych przez AI.
 - Wideo może być po polsku, ale **z angielskimi napisami**. Slajdy tylko po angielsku.
 - Na stronę projektu wgrywamy tylko obrazy (≤ 10 MB). Wideo i dokumenty dajemy jako link.
-- W materiałach nie może być wizerunku osób poniżej 18 lat.
+- W materiałach nie może być wizerunku osób poniżej 18 lat. **W naszym zespole jest osoba < 18**, więc: zero twarzy i zdjęć, głos tylko 18+ albo syntezator, a najlepiej same napisy (szczegóły: [DEMO-PLAN.md §1](DEMO-PLAN.md)).
 
 ## Kryteria oceny
 
