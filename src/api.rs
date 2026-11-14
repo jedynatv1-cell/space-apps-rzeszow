@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use anise::prelude::*;
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
@@ -79,9 +79,42 @@ pub struct TrackResponse {
     pub points: Vec<TrackPoint>,
 }
 
-async fn track(State(s): State<Arc<AppState>>, Query(q): Query<TrackQuery>) -> Response {
+/// Output format of `/api/track`: `json` (default) or `csv`.
+#[derive(Debug, Deserialize)]
+pub struct FormatParam {
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
+async fn track(
+    State(s): State<Arc<AppState>>,
+    Query(q): Query<TrackQuery>,
+    Query(f): Query<FormatParam>,
+) -> Response {
+    let csv = match f.format.as_deref() {
+        None | Some("json") => false,
+        Some("csv") => true,
+        Some(other) => {
+            let msg = format!("unknown format '{other}', use json or csv");
+            return (StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))).into_response();
+        }
+    };
     // Ephemeris loops are CPU-bound: keep them off the async executor.
     match tokio::task::spawn_blocking(move || compute_track(&s, &q)).await {
+        Ok(Ok(resp)) if csv => {
+            let name = csv_filename(&resp);
+            (
+                [
+                    (header::CONTENT_TYPE, "text/csv; charset=utf-8".to_string()),
+                    (
+                        header::CONTENT_DISPOSITION,
+                        format!("attachment; filename=\"{name}\""),
+                    ),
+                ],
+                track_csv(&resp),
+            )
+                .into_response()
+        }
         Ok(Ok(resp)) => Json(resp).into_response(),
         Ok(Err(msg)) => (StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
@@ -443,6 +476,45 @@ fn compare_starts(q: &CompareQuery) -> Result<Vec<String>, String> {
     Ok(epochs.into_iter().map(metrics::iso).collect())
 }
 
+/// CSV header of `/api/track?format=csv`; one row per sample point.
+pub const CSV_HEADER: &str = "t_utc,sun_az_deg,sun_el_deg,sun_horizon_deg,sun_vis,earth_az_deg,earth_el_deg,earth_horizon_deg,earth_vis,sun_distance_km,earth_distance_km";
+
+/// The track as CSV for mission planners (angles in degrees, visibility 0..1).
+pub fn track_csv(r: &TrackResponse) -> String {
+    let mut out = String::with_capacity(96 * (r.points.len() + 2));
+    out.push_str(CSV_HEADER);
+    out.push('\n');
+    for p in &r.points {
+        out.push_str(&format!(
+            "{},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.0},{:.0}\n",
+            p.t,
+            p.sun.az_deg,
+            p.sun.el_deg,
+            p.sun_horizon_deg,
+            p.sun_vis,
+            p.earth.az_deg,
+            p.earth.el_deg,
+            p.earth_horizon_deg,
+            p.earth_vis,
+            p.sun.distance_km,
+            p.earth.distance_km
+        ));
+    }
+    out
+}
+
+/// e.g. `track_-89.4500_-129.7800_2026-11-14.csv`.
+pub fn csv_filename(r: &TrackResponse) -> String {
+    let date = r
+        .points
+        .first()
+        .map_or("start", |p| p.t.get(..10).unwrap_or("start"));
+    format!(
+        "track_{:.4}_{:.4}_{date}.csv",
+        r.site.lat_deg, r.site.lon_deg
+    )
+}
+
 /// Parse a UTC timestamp, accepting date-only and minute-precision forms.
 pub fn parse_utc(s: &str) -> Result<Epoch, String> {
     let mut t = s.trim().trim_end_matches('Z').replace(' ', "T");
@@ -483,6 +555,46 @@ mod tests {
             alt_m: 0.0,
             dte_margin_deg: 0.0,
         }
+    }
+
+    #[test]
+    fn track_csv_rows_and_filename() {
+        use crate::ephem::AzEl;
+        let d = |az: f64, el: f64| AzEl {
+            az_deg: az,
+            el_deg: el,
+            radius_deg: 0.27,
+            distance_km: 1.5e8,
+        };
+        let points: Vec<TrackPoint> = (0..3)
+            .map(|i| TrackPoint {
+                t: format!("2026-11-14T0{i}:00:00Z"),
+                sun: d(10.0 * i as f64, 1.5),
+                earth: d(355.0, 4.25),
+                sun_horizon_deg: 0.5,
+                earth_horizon_deg: -0.1,
+                sun_vis: 1.0,
+                earth_vis: 1.0,
+            })
+            .collect();
+        let site = Site::new(-89.45, -129.78, 0.0).unwrap();
+        let r = TrackResponse {
+            site,
+            horizon: HorizonMask::sphere(&site, 4),
+            summary: metrics::summarize(&points, 1.0, 0.0),
+            points,
+        };
+        let csv = track_csv(&r);
+        let lines: Vec<&str> = csv.lines().collect();
+        assert_eq!(lines.len(), 4);
+        assert_eq!(lines[0], CSV_HEADER);
+        let cols = CSV_HEADER.split(',').count();
+        assert!(lines.iter().all(|l| l.split(',').count() == cols));
+        assert_eq!(
+            lines[2],
+            "2026-11-14T01:00:00Z,10.0000,1.5000,0.5000,1.0000,355.0000,4.2500,-0.1000,1.0000,150000000,150000000"
+        );
+        assert_eq!(csv_filename(&r), "track_-89.4500_-129.7800_2026-11-14.csv");
     }
 
     #[test]
