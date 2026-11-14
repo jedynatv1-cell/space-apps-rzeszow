@@ -1,0 +1,64 @@
+{
+  "_comment": "Set \"laptops\" to the number of team laptops (2-6). Each laptop sets its own number in .claude/role.local.json (git-ignored), e.g. {\"laptop\": \"L2\"}. Hooks and skills read this file.",
+  "laptops": 5,
+  "integrator": "L1",
+  "everyone": ["docs/COORDINATION.md"],
+  "workstreams": {
+    "CORE": {
+      "title": "Integration: shared config, main.rs, merges, server",
+      "effort_h": 1,
+      "ai": "Claude (light)",
+      "owns": ["Cargo.toml", "Cargo.lock", "src/main.rs", "CLAUDE.md", "AGENTS.md", "README.md", "docs/HANDOFF.md", ".claude/**", ".github/**", ".gitignore", ".gitattributes"]
+    },
+    "W1": {
+      "title": "Terrain: LOLA DEM reader + horizon mask",
+      "effort_h": 6,
+      "ai": "Claude (heavy)",
+      "branch": "feat/terrain",
+      "owns": ["src/dem.rs", "src/horizon.rs"]
+    },
+    "W2": {
+      "title": "Metrics + API: earthrise/sunrise, /api/compare, validation vs PGDA",
+      "effort_h": 4,
+      "ai": "Claude (medium)",
+      "branch": "feat/metrics",
+      "owns": ["src/metrics.rs", "src/api.rs", "src/ephem.rs", "src/site.rs"]
+    },
+    "W3": {
+      "title": "Frontend: sky plot, horizon panorama, side-by-side compare",
+      "effort_h": 6,
+      "ai": "Antigravity (own quota)",
+      "branch": "feat/ui",
+      "owns": ["web/**"]
+    },
+    "W4": {
+      "title": "Content + data: sites.json fixes, project page texts (EN), validation table",
+      "effort_h": 3,
+      "ai": "mostly human, Claude occasionally",
+      "branch": "feat/content",
+      "owns": ["data/sites.json", "docs/SUBMISSION.md", "docs/CHALLENGE.md", "docs/RESEARCH.md"]
+    },
+    "W5": {
+      "title": "Media: demo recording script, DaVinci edit, 7 slides, local pitch",
+      "effort_h": 4,
+      "ai": "mostly human, Claude for the recording script",
+      "branch": "feat/demo",
+      "owns": ["docs/DEMO-PLAN.md", "scripts/**"]
+    },
+    "QA": {
+      "title": "Testing on the shared server, bug reports, incognito link checks",
+      "effort_h": 3,
+      "ai": "human",
+      "owns": []
+    }
+  },
+  "_machines": "STRONG laptops: L1, L2 (Saturday) + L6 (arrives Sunday). They do Rust builds, the shared server, Claude work and DaVinci. L3-L5 are LIGHT (integrated graphics): browser, Antigravity, docs, testing. Set \"machine\": \"strong\"|\"light\" in role.local.json; the session hook warns on a mismatch. Saturday: \"laptops\": 5. Sunday when L6 arrives: \"laptops\": 6 (W5 moves from L2 to L6).",
+  "strong": ["L1", "L2", "L6"],
+  "layouts": {
+    "2": { "L1": ["CORE", "W1", "W2"], "L2": ["W3", "W4", "W5"] },
+    "3": { "L1": ["CORE", "W1"], "L2": ["W2", "W5"], "L3": ["W3", "W4"] },
+    "4": { "L1": ["CORE", "W1"], "L2": ["W2", "W5"], "L3": ["W3"], "L4": ["W4"] },
+    "5": { "L1": ["CORE", "W1"], "L2": ["W2", "W5"], "L3": ["W3"], "L4": ["W4"], "L5": ["QA"] },
+    "6": { "L1": ["CORE", "W1"], "L2": ["W2"], "L3": ["W3"], "L4": ["W4"], "L5": ["QA"], "L6": ["W5"] }
+  }
+}

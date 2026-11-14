@@ -19,6 +19,10 @@ __pycache__/
 # Large datasets — keep raw downloads out of git
 /data/raw/
 
+# Per-laptop Claude config (role, personal overrides)
+.claude/role.local.json
+.claude/settings.local.json
+
 # Editors / OS
 .vscode/*
 !.vscode/extensions.json

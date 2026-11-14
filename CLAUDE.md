@@ -2,7 +2,8 @@
 
 **Start here:** read `docs/HANDOFF.md` — current status, what is verified, next steps, pitfalls.
 Deadlines: **local judging submission Sun 15 Nov 2026, 12:59 CET** (Rzeszów); global Sun 23:59 CET.
-Parallel agents: you own only the files/branch assigned in `docs/COORDINATION.md`. Demo/recording plan: `docs/DEMO-PLAN.md`.
+Team of up to 6 laptops sharing one Claude quota: roles, file ownership and branches live in `.claude/roles.json`; this laptop's role in `.claude/role.local.json` (git-ignored). The session-start hook tells you which laptop you are and what you may edit; guard hooks block edits to other laptops' files and unsafe git. Skills: `/setup-laptop`, `/sync`, `/verify`, `/ship`. Plan and messaging rules: `docs/COORDINATION.md`. Demo plan: `docs/DEMO-PLAN.md`.
+Quota: no subagents or workflows; keep one long-running chat per laptop.
 
 ## What it is
 Rust (axum + ANISE) backend + static `web/` frontend. For a lunar site and date it computes Sun and

@@ -1,112 +1,161 @@
-# Jak pracują razem 2 czaty Claude + Antigravity
+# Plan współpracy: 6 laptopów, 1 limit Claude, agenci, którzy ze sobą rozmawiają
 
-**Zasada:** agenci nie rozmawiają ze sobą bezpośrednio. Koordynują się przez **jedno repo na GitHubie**, w którym:
-- każdy agent ma **własną gałąź** i **własne pliki**, nigdy nie edytują tych samych plików jednocześnie;
-- stan wspólny jest w **plikach w repo** (ten plik, `docs/HANDOFF.md`, `CLAUDE.md`, `AGENTS.md`), nie w pamięci czatu;
-- do `main` wchodzi się tylko przez **Pull Request z zielonym CI**.
+> **Status: PROPOZYCJA do przejrzenia** (sob 14.11 ~11:45). Decyzje są podjęte za Ciebie, z uzasadnieniem. Zmieniasz je w jednym miejscu: `.claude/roles.json`.
 
-```
-            GitHub: main  (zawsze działa, CI zielone)
-           ▲            ▲             ▲
-        PR │         PR │          PR │
-  feat/terrain     feat/metrics    feat/ui
-  Claude czat 1    Claude czat 2   Antigravity
-  src/dem.rs       src/metrics.rs  web/
-  src/horizon.rs   src/api.rs
-```
+## 0. Decyzje w skrócie
 
-## 1. Podział: kto jest właścicielem jakich plików
+| Pytanie | Decyzja | Dlaczego |
+|---|---|---|
+| Czy każdy PC trzyma repo? | **Tak, każdy ma klon tego samego repo z GitHuba.** | Wszyscy widzą ten sam `main`. Różnice żyją tylko na gałęziach, dopóki L1 ich nie scali. |
+| Jak repo zostaje „takie samo”? | Hook na starcie każdej sesji pokazuje, ile brakuje do `main`. Skill **`/sync`** to nadrabia. L1 scala co ~1,5 h. | Ręczne pilnowanie zawodzi; automat nie zapomina. |
+| Ile czatów Claude? | **Sobota: 3** (L1 i L2 ciężko, L4 lekko). **Niedziela: +1 na L6.** Naraz pracują **maks. 2**. | Jeden limit dla wszystkich: każdy równoległy czat zjada go tak samo. |
+| Kto robi frontend? | **Antigravity na L3** (słaby laptop wystarczy). | HTML/JS nie wymaga kompilacji, Antigravity ma osobny limit (Google), a serwer stoi na L1. |
+| Gdzie stoi aplikacja? | **Jeden serwer na L1** (`cargo run`), reszta przez Tailscale `http://<L1>:3000`. | Tylko L1 potrzebuje 620 MB danych i kompilacji Rusta. |
+| Jak agenci rozmawiają? | **Remote Control włączony w każdej sesji Claude** + `SendMessage`. Antigravity przez Dziennik (§8). | Wiadomość od razu trafia do właściwego laptopa, a Dziennik zostaje źródłem prawdy. |
+| Co pilnuje struktury? | **Hooki** (`.claude/settings.json`): agent nie edytuje cudzych plików, nie pushuje na `main`, nie robi force-push/stash/reset. | Działa automatycznie w każdej sesji Claude na każdym PC, bo jest w repo. |
 
-| Agent | Gałąź | Pliki (tylko on je zmienia) | Zadanie |
-|---|---|---|---|
-| **Claude czat 1** | `feat/terrain` | `src/dem.rs`, `src/horizon.rs` | Czytnik LOLA DEM, maska horyzontu z terenu (HANDOFF §6 pkt 1) |
-| **Claude czat 2** | `feat/metrics` | `src/metrics.rs`, `src/api.rs`, `src/ephem.rs` | Earthrise/sunrise, porównanie wielu miejsc (`/api/compare`), walidacja PGDA |
-| **Antigravity** | `feat/ui` | `web/**` | Frontend: sky-plot, panorama, porównanie obok siebie, tryb public/ekspert |
-| **Człowiek (E)** | `docs/pitch` | `docs/SUBMISSION.md`, `docs/DEMO-PLAN.md`, `data/sites.json` | Zgłoszenie, nagranie, slajdy |
+## 1. Sprzęt i role
 
-Pliki **wspólne** (`Cargo.toml`, `src/main.rs`, `README.md`, `CLAUDE.md`) zmienia tylko jedna osoba naraz. Kto zmienia, ten wpisuje to w „Dzienniku” niżej.
+| Laptop | Maszyna | Strumienie pracy (z `roles.json`) | Narzędzie AI | Gałąź |
+|---|---|---|---|---|
+| **L1** | 💪 mocny | **CORE** (integrator: merge, serwer, konfiguracja) + **W1** teren: czytnik LOLA DEM, maska horyzontu | Claude (ciężko) | `feat/terrain` (+ `main` jako integrator) |
+| **L2** | 💪 mocny | **W2** metryki i API: earthrise, `/api/compare`, walidacja PGDA (+ **W5** w sobotę) | Claude (średnio) | `feat/metrics` |
+| **L3** | 🪶 słaby | **W3** frontend: sky-plot, panorama, porównanie obok siebie | Antigravity | `feat/ui` |
+| **L4** | 🪶 słaby | **W4** treści: `sites.json` (rozsunięcie regionów Artemis przez Quickmap), teksty strony projektu (EN), tabela walidacji | Claude (lekko, okazjonalnie) | `feat/content` |
+| **L5** | 🪶 słaby | **QA**: testy na serwerze L1, zgłaszanie błędów, sprawdzanie linków w trybie incognito, slajdy (Google Slides) | brak (człowiek) | — |
+| **L6** *(od niedzieli)* | 💪 mocny | **W5** media: skrypt nagrywający, DaVinci, 7 slajdów, pitch | Claude (skrypt) | `feat/demo` |
+| **R1** komputer zdalny (Google Remote Desktop) | 💪 zajęty | **NIE w projekcie.** Trenuje model PPO w osobnej sesji Claude („Sieć neuronowa do przewidywania…”). Nie klonujemy tu repo i nie wysyłamy wiadomości. | — | — |
 
-### Kontrakt między agentami = API JSON
-Antigravity (frontend) i Claude czat 2 (API) dogadują się **tylko przez kontrakt** z HANDOFF §5. Zmiana kształtu JSON-a to wpis w Dzienniku **przed** zmianą kodu. Nowe pola dodajemy; starych nie usuwamy ani nie zmieniamy im nazw.
+**Równy podział:** szacunki godzin w `roles.json` (`effort_h`). Mocne laptopy biorą Rusta (~7–8 h każdy), L3 frontend (~6 h), słabe laptopy lżejsze zadania plus pitch i slajdy, które robią ludzie.
 
-## 2. Konfiguracja (raz, na nowej maszynie)
+**Przełączenie na 6 laptopów (nd rano):** L1 zmienia `"laptops": 5` → `6` w `.claude/roles.json`, commit na `main`. W5 automatycznie przechodzi z L2 na L6.
 
-Każdy agent dostaje **osobny folder** (git worktree), żeby nie nadpisywać sobie plików na dysku:
+**ID komputerów:** L1–L6 to laptopy projektu, R1 to komputer zdalny (wyłączony). ID wpisuje się w `.claude/role.local.json` (`/setup-laptop`) i w nazwie Tailscale (`laptop-l1` … `laptop-l6`). Ten sam numer występuje w wiadomościach `[L2→L3]` i w Dzienniku.
 
-```bash
-git clone https://github.com/jedynatv1-cell/space-apps-rzeszow navigator
-cd navigator
-git worktree add ../nav-terrain -b feat/terrain
-git worktree add ../nav-metrics -b feat/metrics
-git worktree add ../nav-ui      -b feat/ui
-```
+**Do uzupełnienia:** kto siedzi przy którym laptopie (tabela §2).
 
-Skopiuj `data/raw/` do każdego folderu albo podlinkuj (jeden egzemplarz zajmuje ~620 MB):
+## 2. Urządzenia (uzupełnijcie)
 
-```powershell
-# PowerShell jako administrator, z folderu nav-terrain (analogicznie w pozostałych)
-New-Item -ItemType SymbolicLink -Path data\raw -Target ..\navigator\data\raw
-```
-
-- **Claude czat 1** otwórz w folderze `nav-terrain`, **czat 2** w `nav-metrics`, a **Antigravity** w `nav-ui`.
-- Pierwsza wiadomość do każdego agenta (wklej):
-  > Przeczytaj CLAUDE.md (albo AGENTS.md), docs/HANDOFF.md i docs/COORDINATION.md. Jesteś „<nazwa agenta>” z tabeli w COORDINATION.md: zmieniasz tylko swoje pliki, pracujesz na swojej gałęzi, a przed każdym commitem uruchamiasz fmt, clippy i testy. Na koniec każdej sesji dopisz wpis do Dziennika.
-- Antigravity czyta `AGENTS.md` (wskazuje na `CLAUDE.md`). Jeśli go nie wczyta, wklej mu treść `CLAUDE.md` do pierwszej wiadomości.
-- **Serwery deweloperskie na różnych portach**, żeby się nie gryzły: `PORT=3001 cargo run`, `PORT=3002 cargo run` itd. Frontend w `nav-ui` może celować w dowolny backend.
-
-## 3. Rytm pracy (co ~1–2 h)
-
-1. Agent kończy kawałek, lokalnie przechodzą `cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test`.
-2. `git push` swojej gałęzi, potem `gh pr create --fill`.
-3. Człowiek patrzy na diff (5 min) i robi merge, gdy CI jest zielone.
-4. Pozostali agenci: `git pull --rebase origin main`, żeby dostać nowości.
-5. Wpis do Dziennika.
-
-**Ty jesteś routerem.** Gdy czat 1 skończy maskę horyzontu, mówisz czatowi 2 i Antigravity: „pull main, nowe pole `horizon.source = lola:…`”. Wiadomość między agentami to w praktyce **commit + wpis w Dzienniku + jedno zdanie od Ciebie**.
-
-Jeśli oba czaty Claude są w aplikacji Claude desktop na tej samej maszynie, sesje mogą też wysyłać sobie wiadomości bezpośrednio (sesja uruchomiona z innej sesji widzi ją jako „linked session”). Repo i Dziennik i tak pozostają źródłem prawdy, bo Antigravity tego kanału nie widzi.
-
-## 4. Urządzenia (uzupełnijcie na miejscu)
-
-| Osoba | Rola (A–E) | Nazwa w Tailscale | System | Co tam działa | Ma `data/raw/`? | Uwagi |
+| Laptop | Osoba | Nazwa w Tailscale | System | Ma `data/raw/`? | Remote Control | Uwagi |
 |---|---|---|---|---|---|---|
-| … | B (teren) | `laptop-…` | Win 11 | Claude czat 1, **serwer `cargo run`** | ✅ | jedyny serwer dla wszystkich |
-| … | C (metryki/API) | `laptop-…` | … | Claude czat 2 | … | `PORT=3001` przy testach |
-| … | D (frontend) | `laptop-…` | … | Antigravity | ❌ (niepotrzebne) | frontend → `http://<serwer>:3000` |
-| … | E (pitch) | `laptop-…` | … | DaVinci, nagrywanie, strona projektu | ❌ | nagrywa z serwera przez Tailscale |
+| L1 | … | `laptop-l?` | … | ✅ wymagane | ✅ | jedyny serwer, integrator |
+| L2 | … | `laptop-l?` | … | opcjonalnie | ✅ | własny serwer testowy na `PORT=3001` |
+| L3 | … | `laptop-l?` | … | ❌ | — (Antigravity) | frontend → `http://<L1>:3000` |
+| L4 | … | `laptop-l?` | … | ❌ | ✅ | |
+| L5 | … | `laptop-l?` | … | ❌ | ✅ (podgląd sesji L1/L2) | |
+| L6 | … | `laptop-l?` | … | opcjonalnie | ✅ | od niedzieli |
+| R1 | — | — | … | ❌ | ❌ | zajęty treningiem PPO, poza projektem |
 
-Widać tu, gdzie są duże dane, który komputer jest serwerem i gdzie powstaje montaż.
+## 3. Repo na każdym komputerze
 
-## 5. Sieć: Tailscale (bez logowania na każdym laptopie)
+```
+               GitHub: main  ← tylko L1 scala PR-y (zielone CI)
+      ┌──────────┬──────────┬──────────┬──────────┬──────────┐
+     L1         L2         L3         L4         L5         L6
+ feat/terrain feat/metrics feat/ui feat/content  (main,     feat/demo
+   + main                                       tylko odczyt)
+```
+
+**Konfiguracja raz na każdym PC (~10 min):**
+```bash
+gh repo clone jedynatv1-cell/space-apps-rzeszow navigator
+cd navigator
+```
+Potem otwórz w tym folderze Claude Code i wpisz **`/setup-laptop`**. Skill zapyta o numer laptopa, zapisze `.claude/role.local.json` (nie trafia do gita), sprawdzi narzędzia, przełączy na właściwą gałąź i zaproponuje włączenie Remote Control.
+
+- **Każdy PC ma Node** (hooki są w Node). Rust tylko na mocnych.
+- **`data/raw/`** tylko na L1 (+ ewentualnie L2/L6). Przesyłanie przez Taildrop (§7), potem sprawdzenie rozmiarów z HANDOFF §2.
+- **Worktree nie są potrzebne:** każdy agent ma własny komputer. Wyjątek: dwa agenty na jednej maszynie (wtedy `git worktree add`).
+
+**Rytm synchronizacji:**
+1. Start pracy: hook pokazuje „N behind” → **`/sync`**.
+2. Skończony kawałek: **`/ship`** (verify → commit swoich plików → push gałęzi → PR → wpis w Dzienniku → wiadomość do laptopów, których to dotyczy).
+3. **L1 scala co ~1,5 h** (13:30, 15:00, 16:30, wieczorem) i wysyła `[L1→all] main updated … Run /sync`.
+
+## 4. Limit Claude: zasady
+
+1. **Maks. 2 czaty Claude pracują naraz.** Pierwszeństwo ma ścieżka krytyczna: W1 teren (L1). Pozostali czekają albo robią swoją część ręcznie.
+2. **Jeden czat na laptop, prowadzony długo.** Nowy czat zakładamy tylko przy zmianie tematu, bo ciągnięcie historii jest tańsze niż tłumaczenie wszystkiego od nowa. Nowy czat i tak dostanie kontekst z CLAUDE.md, HANDOFF i hooka startowego.
+3. **Bez subagentów i workflow** (wieloagentowe tryby mnożą zużycie). Nie wpisujcie słowa „ultracode”.
+4. **Słabe laptopy nie zakładają własnych ciężkich czatów.** Przez Remote Control podglądają i kierują sesjami L1/L2, co nie kosztuje dodatkowego limitu.
+5. Krótkie polecenia, bez wklejania wielkich logów. Zużycie sprawdzajcie w aplikacji Claude co parę godzin.
+6. **Ten czat (koordynator) po starcie można zarchiwizować.** Rolę koordynatora przejmuje czat na L1.
+
+## 5. Jak agenci rozmawiają
+
+**Ustawienia na każdym laptopie z Claude** (plik `~/.claude/settings.json`; skill `/setup-laptop` zaproponuje):
+```json
+{ "remoteControlAtStartup": true, "crossSessionInbound": "accept" }
+```
+- `remoteControlAtStartup`: każda sesja jest od razu widoczna dla pozostałych sesji tego konta (także na innych komputerach).
+- `crossSessionInbound: "accept"`: wiadomości od innych sesji docierają. Bez tego mogą być „zatrzymane do akceptacji”, gdy laptopy mają różne tryby uprawnień. Bezpieczne tylko dlatego, że wszystkie laptopy to jedno konto.
+
+**Format wiadomości** (agent wysyła przez `SendMessage`, a odbiorcę znajduje przez `ListAgents`):
+```
+[L2→L3] PR #12 merged: /api/track ma nowe pole summary.next_earthrise (ISO lub null). Pull main; nic nie znika.
+[L1→all] main updated (a1b2c3d): maska horyzontu z LOLA dla ≤ -80°. Run /sync. Serwer zrestartowany.
+[L3→L2] Prośba: potrzebuję /api/compare?ids=1,5,7 zwracającego listę summary. Kiedy?
+```
+- Wiadomość to **informacja, nie rozkaz**. Agent-odbiorca pyta swojego człowieka, zanim zrobi coś poza swoimi plikami.
+- **Każda ważna wiadomość ma też wiersz w Dzienniku §8.** Antigravity (L3) nie odbiera `SendMessage`, więc czyta Dziennik, a osoba przy L3 dostaje info od innych.
+- **Kontrakt API (HANDOFF §5) jest zamrożony:** pola wolno dodawać, nie wolno zmieniać nazw ani usuwać.
+
+## 6. Co pilnuje struktury (automatycznie)
+
+| Mechanizm | Plik | Co robi |
+|---|---|---|
+| Hook startowy | `.claude/hooks/session-start.mjs` | Na początku każdej sesji: który to laptop, jakie pliki wolno edytować, ile brakuje do `main`, 3 ostatnie wpisy z Dziennika, ostrzeżenie „słaby laptop, nie kompiluj” |
+| Ochrona plików | `.claude/hooks/guard-ownership.mjs` | Blokuje edycję cudzych plików, nieprzypisanych nowych plików i `data/raw/`; mówi, czyj to plik i jak poprosić |
+| Ochrona gita | `.claude/hooks/guard-git.mjs` | Blokuje push na `main` (poza L1), force-push, `stash`, `reset --hard`, `clean -f`, `add data/raw`, `--no-verify` |
+| Skille | `.claude/skills/` | `/setup-laptop`, `/sync`, `/verify`, `/ship` |
+| CI | `.github/workflows/ci.yml` | fmt, clippy, testy na każdym PR |
+
+- Hooki działają **tylko w Claude**. Antigravity ich nie widzi, więc jego zasady są w `AGENTS.md`, a pilnuje ich osoba przy L3 plus CI.
+- Bez `role.local.json` ochrona plików jest **wyłączona** (żeby nie blokować przed konfiguracją), a hook startowy o tym ostrzega.
+- Wyjątek „na życzenie”: `"override": true` w `role.local.json` wyłącza ochronę plików na tym laptopie. Tylko świadomie.
+- Nowy plik (np. `src/compare.rs`): najpierw L1 dopisuje go do `owns` w `roles.json`.
+- Zmiany w hookach i ustawieniach działają od **następnej** sesji.
+
+## 7. Sieć: Tailscale (bez logowania na każdym laptopie)
 
 **Po co:** Wi-Fi na wydarzeniu często izoluje klientów (laptopy nie widzą się nawzajem). Tailscale to omija, w razie potrzeby przez serwery pośredniczące: wolniej, ale działa.
 
-**Konfiguracja przez auth key:**
-1. Jedna osoba zakłada konto Tailscale (albo bierze konto zespołowe).
-2. W panelu admina (*Settings → Keys*) generuje **reusable auth key** z krótkim terminem ważności (1–2 dni), najlepiej **ephemeral**, żeby urządzenia same zniknęły po hackathonie. Ephemeral usuwa urządzenie po dłuższym offline; po uśpieniu laptopa wystarczy ponownie uruchomić polecenie z pkt 3.
-3. Na każdym laptopie (z zainstalowanym Tailscale):
-   ```bash
-   tailscale up --authkey=<KLUCZ> --hostname=laptop-<imie>
-   ```
-   Nikt nie loguje się w przeglądarce.
+1. Jedna osoba zakłada konto Tailscale.
+2. W panelu admina (*Settings → Keys*) generuje **reusable + ephemeral auth key** ważny 1–2 dni. Ephemeral usuwa urządzenie po dłuższym offline; po uśpieniu laptopa wystarczy ponownie uruchomić polecenie z pkt 3.
+3. Na każdym PC: `tailscale up --authkey=<KLUCZ> --hostname=laptop-<imie>`.
 
-> ⚠️ **Klucz to sekret.** Nigdy nie trafia do repo, dokumentów ani czatów z AI. Przekazujcie go prywatną wiadomością i **unieważnijcie po wydarzeniu** (panel admina → Keys → Revoke).
+> ⚠️ **Klucz to sekret.** Nie trafia do repo, dokumentów ani czatów z AI. Przekazujcie go prywatnie, a po wydarzeniu unieważnijcie (panel → Keys → Revoke).
 
-**Co to daje:**
-- **Jeden serwer dla wszystkich:** na laptopie z kernelami i DEM-ami `cargo run`, a reszta otwiera `http://laptop-<imie>:3000` (MagicDNS). Serwer już nasłuchuje na `0.0.0.0` (`src/main.rs`), a CORS jest otwarty, więc frontend z innego laptopa też działa. Windows przy pierwszym uruchomieniu zapyta o zgodę zapory: zezwolić.
-- **Przesyłanie `data/raw/` (~620 MB)** przez Taildrop zamiast pobierania na każdym laptopie od nowa. Taildrop działa między urządzeniami tego samego konta, a przy jednym koncie z auth key wszystkie są „Twoje”. Po przesłaniu sprawdź rozmiary z HANDOFF §2.
-- Opcjonalnie **Tailscale SSH**, gdyby agenci mieli pracować zdalnie na jednej maszynie.
+- **Serwer:** na L1 `cargo run`, a reszta otwiera `http://laptop-<imie-L1>:3000` (MagicDNS). Serwer nasłuchuje na `0.0.0.0` z otwartym CORS. Windows zapyta o zgodę zapory: zezwolić.
+- **`data/raw/` (~620 MB)** przesyłamy przez Taildrop (urządzenia jednego konta), potem sprawdzamy rozmiary z HANDOFF §2.
+- Tailscale **nie zastępuje** logowania do GitHuba, Claude, Antigravity ani spaceappschallenge.org.
+- Darmowy plan ma limit użytkowników (sprawdź tailscale.com/pricing). Jedno konto z auth key to jeden użytkownik, więc limit nie przeszkadza.
 
-**Czego Tailscale NIE załatwia:** każdy i tak loguje się osobno do:
-- GitHuba (push i zaproszenie do repo),
-- Claude oraz Antigravity (konto Google),
-- spaceappschallenge.org (każdy członek zespołu musi być zarejestrowany na wydarzenie w Rzeszowie).
+## 8. Plan dnia
 
-**Darmowy plan** ma limit użytkowników (aktualną liczbę sprawdźcie na tailscale.com/pricing). Wariant z jednym kontem i auth key go nie dotyczy: to jeden użytkownik z wieloma urządzeniami.
+**Sobota**
+| Kiedy | L1 💪 | L2 💪 | L3 🪶 | L4 🪶 | L5 🪶 |
+|---|---|---|---|---|---|
+| do 12:15 | clone, `/setup-laptop`, Tailscale, `data/raw/`, `cargo run` | clone, `/setup-laptop`, Tailscale | clone, Antigravity w repo, Tailscale | clone, `/setup-laptop` | clone, Tailscale, otwiera serwer L1 |
+| 12:15–17:00 | W1: czytnik DEM → test orientacji (Shackleton = dołek) → maska | W2: earthrise/sunrise, `/api/compare` | W3: sky-plot + porównanie (na danych z serwera L1) | W4: rozsunięcie regionów Artemis, szkic tekstów EN | QA: klikanie, lista błędów w Dzienniku, szkic slajdów |
+| 13:30 / 15:00 / 16:30 | **merge PR-ów** | `/ship` | `/ship` (przez osobę) | `/ship` | — |
+| 17:00 | wyjście z PCI; serwer na noc = **L1 w domu** (Tailscale działa dalej) | | | | |
+| wieczór | cel: **maska horyzontu na `main` do 20:00** | walidacja PGDA | dopieszczanie UI | teksty strony projektu | — |
 
-## 6. Dziennik (dopisuj na górze)
+**Niedziela**
+| Kiedy | Co |
+|---|---|
+| 09:00 | L6 dołącza: `/setup-laptop`, L1 ustawia `"laptops": 6` |
+| 10:00 | **Feature freeze**: w `main` tylko poprawki |
+| 10:00–11:45 | L6: skrypt nagrywający + DaVinci (`docs/DEMO-PLAN.md`). L4: strona projektu. L5: test linków w trybie incognito |
+| 12:15 | repo publiczne (L1) |
+| **12:40** | **Submit** (lokalny deadline 12:59) |
+| 13:00 | pitch na żywo z L1 + wideo zapasowe |
+
+## 9. Dziennik (dopisuj na górze)
 
 | Kiedy | Kto | Co | Wpływ na innych |
 |---|---|---|---|
-| sob 14.11 ~11:20 | Claude (czat 0) | Lista urządzeń + Tailscale (§4–5) | Uzupełnić tabelę urządzeń; jeden laptop = serwer |
+| sob 14.11 ~11:45 | Claude (koordynator) | Role per laptop, hooki, skille, plan (ten plik) | Każdy PC: clone + `/setup-laptop` |
+| sob 14.11 ~11:20 | Claude (czat 0) | Lista urządzeń + Tailscale | Uzupełnić tabelę urządzeń; jeden laptop = serwer |
 | sob 14.11 ~10:30 | Claude (czat 0) | Szkielet + dokumentacja, CI zielone, DEM pobrane | Start: każdy bierze swoją gałąź |
