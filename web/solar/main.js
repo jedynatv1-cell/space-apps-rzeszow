@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import * as E from './ephem.js';
-import { LANDING_DATES } from './landing-dates.js';
+import { SITE_INFO } from './site-info.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -16,8 +16,6 @@ const TRAIL_DAYS = 365, TRAIL_N = 366;
 const state = {
   t: Date.now(),
   playing: false,
-  span: 30,                 // timeline width in days
-  center: Date.now(),       // timeline centre
   theme: localStorage.getItem('navTheme') || 'dark',
 };
 
@@ -31,6 +29,7 @@ const labels = new CSS2DRenderer();
 labels.domElement.style.position = 'absolute';
 labels.domElement.style.inset = '0';
 labels.domElement.style.pointerEvents = 'none';
+labels.domElement.style.zIndex = '1'; // own stacking context: marker z-indices stay below the card and panels
 view.append(labels.domElement);
 
 const scene = new THREE.Scene();
@@ -326,59 +325,100 @@ async function loadSites() {
   const tries = ['/api/sites'];
   const saved = localStorage.getItem('navApi');
   if (saved) tries.push(saved.replace(/\/$/, '') + '/api/sites');
-  tries.push('../data/sites.json');
+  tries.push('../data/sites.json', 'samples/sites.json');
   for (const url of tries) {
     try { const r = await fetch(url); if (r.ok) return await r.json(); } catch { /* next */ }
   }
   return [];
 }
 
-function siteClass(s) {
-  if (s.status === 'crashed') return 'lost';
-  if (s.status === 'planned' || s.status === 'candidate_region') return 'planned';
-  return '';
-}
+const STATUS = {
+  landed: ['landed', 'Landed'], crashed: ['lost', 'Lost on landing'],
+  planned: ['planned', 'Planned'], candidate_region: ['planned', 'Candidate region'],
+};
+const statusOf = s => STATUS[s.status] || ['landed', s.status || ''];
 
 function addSites(sites) {
   for (const s of sites) {
     const lat = s.lat_deg * Math.PI / 180, lon = s.lon_deg * Math.PI / 180;
     const n = new THREE.Vector3(Math.cos(lat) * Math.cos(lon), Math.cos(lat) * Math.sin(lon), Math.sin(lat));
     const el = document.createElement('div');
-    el.className = `site ${siteClass(s)}`;
-    el.title = s.name;
-    el.innerHTML = `<span class="site-name">${esc(s.name)}</span>`;
+    el.className = `site ${statusOf(s)[0]}`;
+    el.setAttribute('aria-label', s.name);
     const obj = new CSS2DObject(el);
     obj.position.copy(n).multiplyScalar(MOON_R + 2);
     moonFrame.add(obj);
     const m = { site: s, obj, el, normal: n };
     el.addEventListener('pointerdown', e => e.stopPropagation());
-    el.addEventListener('click', e => { e.stopPropagation(); openSite(m); });
+    el.addEventListener('pointerenter', () => { if (!card.pinned) showCard(m); cancelHide(); });
+    el.addEventListener('pointerleave', () => scheduleHide());
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      if (card.m === m && card.pinned) { hideCard(true); return; }
+      showCard(m); card.pinned = true; $('card').classList.add('open');
+    });
     siteMarkers.push(m);
   }
 }
 
-function openSite(m) {
-  siteMarkers.forEach(x => x.el.classList.toggle('active', x === m));
-  const s = m.site, date = LANDING_DATES[s.mission];
-  const status = { landed: 'Landed', crashed: 'Crashed / lost', planned: 'Planned', candidate_region: 'Candidate landing region' }[s.status] || s.status;
-  $('popup').innerHTML = `
-    <button class="close" aria-label="Close">×</button>
-    <h3 id="popup-title">${esc(s.name)}</h3>
-    <dl>
-      <dt>Mission</dt><dd>${esc(s.mission)}</dd>
-      ${s.country_or_agency ? `<dt>Agency</dt><dd>${esc(s.country_or_agency)}</dd>` : ''}
-      <dt>Status</dt><dd>${esc(status)}</dd>
-      <dt>Date</dt><dd>${date ? esc(date) + ' UTC' : (s.status === 'candidate_region' || s.status === 'planned' ? 'not yet' : '—')}</dd>
-      <dt>Location</dt><dd>${s.lat_deg.toFixed(3)}°, ${s.lon_deg.toFixed(3)}°E${s.south_polar ? ' · south polar' : ''}</dd>
-    </dl>
-    ${s.coord_note ? `<p class="note">${esc(s.coord_note)}</p>` : ''}
-    <p><button id="fly">Fly to site</button> <a href="index.html?lat=${s.lat_deg}&lon=${s.lon_deg}">Sun &amp; Earth from here →</a></p>
-    ${s.source_url ? `<p class="note"><a href="${esc(s.source_url)}" target="_blank" rel="noopener">Source</a></p>` : ''}`;
-  $('popup').hidden = false;
-  $('popup').querySelector('.close').onclick = closePopup;
-  $('fly').onclick = () => flyTo(m.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix)), Math.min(camera.position.length(), MOON_R * 2.2));
+// One floating card, positioned above the hovered or pinned marker every frame.
+const card = { m: null, pinned: false, timer: 0 };
+
+function fmtDate(iso) {
+  if (!/^\d{4}-\d\d-\d\d/.test(iso || '')) return iso || '—';
+  const d = new Date(iso + 'T00:00:00Z');
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
-function closePopup() { $('popup').hidden = true; siteMarkers.forEach(x => x.el.classList.remove('active')); }
+const fmtLoc = s => `${Math.abs(s.lat_deg).toFixed(2)}°${s.lat_deg < 0 ? 'S' : 'N'}, ${Math.abs(s.lon_deg).toFixed(2)}°${s.lon_deg < 0 ? 'W' : 'E'}`;
+
+function showCard(m) {
+  const s = m.site, [cls, label] = statusOf(s), info = SITE_INFO[s.mission] || {};
+  const c = $('card');
+  if (card.m !== m) {
+    card.m = m; card.pinned = false;
+    siteMarkers.forEach(x => x.el.classList.toggle('active', x === m));
+    c.className = `glass ${cls}`;
+    c.innerHTML = `
+      <span class="status">${esc(label)}</span>
+      <h3>${esc(s.name)}</h3>
+      <dl>
+        <dt>Mission</dt><dd>${esc(s.mission.replace(/\s*\(.*\)$/, ''))}</dd>
+        <dt>Date</dt><dd>${esc(fmtDate(info.date))}</dd>
+        <dt>Location</dt><dd>${fmtLoc(s)}</dd>
+      </dl>
+      <div class="more"><div>
+        ${info.text ? `<p>${esc(info.text)}</p>` : ''}
+        ${s.coord_note ? `<p>${esc(s.coord_note)}</p>` : ''}
+        <div class="actions"><button class="text" data-fly>Fly to site</button></div>
+      </div></div>
+      <div class="hint">Click for details</div>`;
+    c.querySelector('[data-fly]').onclick = e => {
+      e.stopPropagation();
+      flyTo(m.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix)), Math.min(camera.position.length(), MOON_R * 2.2));
+    };
+    c.hidden = false;
+    c.style.animation = 'none'; void c.offsetWidth; c.style.animation = '';
+  }
+  positionCard();
+}
+
+function hideCard(force) {
+  if (card.pinned && !force) return;
+  card.m = null; card.pinned = false;
+  $('card').hidden = true;
+  siteMarkers.forEach(x => x.el.classList.remove('active'));
+}
+function scheduleHide() { cancelHide(); card.timer = setTimeout(() => hideCard(false), 180); }
+function cancelHide() { clearTimeout(card.timer); }
+
+const _v = new THREE.Vector3();
+function positionCard() {
+  if (!card.m) return;
+  card.m.obj.getWorldPosition(_v).project(camera);
+  const c = $('card');
+  c.style.left = `${(_v.x + 1) / 2 * view.clientWidth}px`;
+  c.style.top = `${(1 - _v.y) / 2 * view.clientHeight}px`;
+}
 
 // ---------- camera moves ----------
 
@@ -447,100 +487,71 @@ function updateMarkers() {
     const p = wn.clone().multiplyScalar(MOON_R);
     m.obj.visible = show && wn.dot(camDir.clone().sub(p)) > 0; // hide sites on the far side
   }
+  if (card.m && !card.m.obj.visible) hideCard(true);
   const labelsOn = $('opt-labels').checked;
   for (const key of ['sun', ...PLANETS]) bodies[key].label.visible = labelsOn;
   bodies.moon.label.visible = labelsOn && dist > MOON_R * 40;
   moonOrbit.visible = $('opt-orbits').checked;
 }
 
-// ---------- time UI ----------
+// ---------- time control ----------
 
+const DAY = 864e5;
 const pad = n => String(n).padStart(2, '0');
-const fmtUTC = ms => { const d = new Date(ms); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`; };
 
-function setTime(ms, recenter = false) {
-  state.t = ms;
-  const half = state.span * 864e5 / 2;
-  if (recenter || ms < state.center - half || ms > state.center + half) state.center = ms;
-  syncTimeInputs();
-}
+function setTime(ms) { state.t = ms; syncTime(); }
 
-function syncTimeInputs() {
+function syncTime() {
   const d = new Date(state.t);
+  $('date-main').textContent = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  $('date-time').textContent = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
   if (document.activeElement !== $('date')) $('date').value = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   if (document.activeElement !== $('time')) $('time').value = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-  let extra = '';
-  if (lastPos) extra = ` · Earth–Moon ${Math.round(Math.hypot(...sub(lastPos.earth, lastPos.moon))).toLocaleString('en')} km`;
-  $('time-summary').textContent = fmtUTC(state.t) + (state.playing ? ' ▶' : '') + extra;
-}
-
-function timelineLayout() { const c = $('timeline'); return { c, w: c.clientWidth, h: c.clientHeight, l: 8, r: 8 }; }
-
-/** Blender-like timeline: ticks with labels, a 'now' marker and the blue playhead. */
-function drawTimeline() {
-  const { c, w, h, l, r } = timelineLayout();
-  if (!w) return;
-  const dpr = window.devicePixelRatio || 1;
-  if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
-  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const css = getComputedStyle(document.documentElement);
-  g.fillStyle = css.getPropertyValue('--input'); g.fillRect(0, 0, w, h);
-  const t0 = state.center - state.span * 432e5, t1 = state.center + state.span * 432e5;
-  const x = t => l + (w - l - r) * (t - t0) / (t1 - t0);
-  const dayMs = 864e5;
-  const step = state.span <= 2 ? 36e5 * 3 : state.span <= 30 ? dayMs : state.span <= 365 ? dayMs * 7 : dayMs * 30;
-  const minor = state.span <= 2 ? 36e5 : state.span <= 30 ? dayMs / 4 : dayMs;
-  g.strokeStyle = css.getPropertyValue('--line'); g.lineWidth = 1;
-  for (let t = Math.ceil(t0 / minor) * minor; t <= t1; t += minor) {
-    g.beginPath(); g.moveTo(x(t) + 0.5, h - 10); g.lineTo(x(t) + 0.5, h); g.stroke();
-  }
-  g.fillStyle = css.getPropertyValue('--muted'); g.font = '11px system-ui';
-  const first = Math.ceil(t0 / step) * step;
-  for (let t = first; t <= t1; t += step) {
-    g.beginPath(); g.moveTo(x(t) + 0.5, 18); g.lineTo(x(t) + 0.5, h); g.stroke();
-    const d = new Date(t);
-    const lab = step < dayMs ? `${pad(d.getUTCHours())}:00` : `${d.getUTCDate()}.${d.getUTCMonth() + 1}${step >= dayMs * 30 ? '.' + String(d.getUTCFullYear()).slice(2) : ''}`;
-    g.fillText(lab, x(t) + 3, 13);
-  }
-  const now = Date.now();
-  if (now >= t0 && now <= t1) { g.fillStyle = '#39d98a'; g.fillRect(x(now) - 1, 18, 2, h - 18); }
-  const px = x(state.t);
-  g.fillStyle = css.getPropertyValue('--accent');
-  g.fillRect(px - 1, 0, 2, h);
-  g.beginPath(); g.moveTo(px - 6, 0); g.lineTo(px + 6, 0); g.lineTo(px, 8); g.fill();
-}
-
-function wireTime() {
-  $('top-toggle').onclick = () => {
-    const open = $('time-panel').hidden;
-    $('time-panel').hidden = !open;
-    $('top-toggle').setAttribute('aria-expanded', String(open));
-    drawTimeline();
-  };
-  const fromInputs = () => {
-    const ms = Date.parse(`${$('date').value}T${$('time').value || '00:00'}:00Z`);
-    if (Number.isFinite(ms)) setTime(ms, true);
-  };
-  $('date').onchange = fromInputs; $('time').onchange = fromInputs;
-  $('now').onclick = () => setTime(Date.now(), true);
-  $('play').onclick = () => setPlaying(!state.playing);
-  $('span').onchange = () => { state.span = +$('span').value; state.center = state.t; drawTimeline(); };
-  const c = $('timeline');
-  const scrub = e => {
-    const { w, l, r } = timelineLayout(), rect = c.getBoundingClientRect();
-    const f = Math.max(0, Math.min(1, (e.clientX - rect.left - l) / (w - l - r)));
-    state.t = state.center + (f - 0.5) * state.span * 864e5;
-    syncTimeInputs();
-  };
-  c.addEventListener('pointerdown', e => { c.setPointerCapture(e.pointerId); setPlaying(false); scrub(e); });
-  c.addEventListener('pointermove', e => { if (e.buttons) scrub(e); });
 }
 
 function setPlaying(on) {
   state.playing = on;
-  $('play').textContent = on ? '❚❚' : '▶';
+  $('bar').classList.toggle('playing', on);
   $('play').setAttribute('aria-label', on ? 'Pause' : 'Play');
-  syncTimeInputs();
+}
+
+/** Step one day per click; holding the button keeps stepping. */
+function holdStep(btn, dir) {
+  let t1 = 0, t2 = 0;
+  const stop = () => { clearTimeout(t1); clearInterval(t2); };
+  btn.addEventListener('pointerdown', () => {
+    setPlaying(false);
+    setTime(state.t + dir * DAY);
+    t1 = setTimeout(() => { t2 = setInterval(() => setTime(state.t + dir * DAY), 90); }, 380);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => btn.addEventListener(ev, stop));
+}
+
+function wireTime() {
+  const top = $('top');
+  $('top-toggle').onclick = () => {
+    const closed = top.classList.toggle('closed');
+    $('top-toggle').setAttribute('aria-expanded', String(!closed));
+    $('top-toggle').setAttribute('aria-label', closed ? 'Show time controls' : 'Hide time controls');
+    if (closed) togglePicker(false);
+  };
+  $('play').onclick = () => setPlaying(!state.playing);
+  holdStep($('back'), -1);
+  holdStep($('fwd'), 1);
+  $('date-btn').onclick = () => togglePicker();
+  const fromInputs = () => {
+    const ms = Date.parse(`${$('date').value}T${$('time').value || '00:00'}:00Z`);
+    if (Number.isFinite(ms)) setTime(ms);
+  };
+  $('date').onchange = fromInputs; $('time').onchange = fromInputs;
+  $('now').onclick = () => setTime(Date.now());
+}
+
+function togglePicker(force) {
+  const open = force ?? !$('picker').classList.contains('open');
+  $('picker').classList.toggle('open', open);
+  $('picker').setAttribute('aria-hidden', String(!open));
+  $('date-btn').setAttribute('aria-expanded', String(open));
 }
 
 // ---------- panels, theme, toggles ----------
@@ -552,28 +563,31 @@ function applyTheme(theme) {
   scene.background = new THREE.Color(theme === 'light' ? 0xdde2ea : 0x02030a);
   const orbitCol = theme === 'light' ? 0x6b7486 : 0x7a8396;
   Object.values(orbitLines).forEach(l => l.material.color.setHex(orbitCol));
-  document.querySelectorAll('input[name=theme]').forEach(r => { r.checked = r.value === theme; });
-  drawTimeline();
+  document.querySelectorAll('[data-theme-set]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.themeSet === theme)));
 }
 
 function wirePanels() {
-  document.querySelectorAll('input[name=theme]').forEach(r => (r.onchange = () => applyTheme(r.value)));
-  $('left-toggle').onclick = () => $('left').classList.toggle('collapsed');
-  $('bottom-toggle').onclick = () => {
-    const open = $('bottom-body').hidden;
-    $('bottom-body').hidden = !open;
-    $('bottom-toggle').setAttribute('aria-expanded', String(open));
-    $('bottom-toggle').textContent = (open ? '▾' : '▴') + ' Panel';
+  document.querySelectorAll('[data-theme-set]').forEach(b => (b.onclick = () => applyTheme(b.dataset.themeSet)));
+  $('left-toggle').onclick = () => {
+    const collapsed = $('left').classList.toggle('collapsed');
+    $('left-toggle').setAttribute('aria-expanded', String(!collapsed));
+    $('left-toggle').setAttribute('aria-label', collapsed ? 'Show settings' : 'Hide settings');
   };
   $('opt-trails').onchange = () => Object.values(trailLines).forEach(l => (l.visible = $('opt-trails').checked));
   $('opt-orbits').onchange = () => Object.values(orbitLines).forEach(l => (l.visible = $('opt-orbits').checked));
   $('opt-shade').onchange = () => (moonUniforms.shade.value = $('opt-shade').checked ? 1 : 0);
   document.querySelectorAll('[data-cam]').forEach(b => (b.onclick = () => cameraPreset(b.dataset.cam, lastPos)));
-  renderer.domElement.addEventListener('click', closePopup);
+  const c = $('card');
+  c.addEventListener('pointerenter', cancelHide);
+  c.addEventListener('pointerleave', scheduleHide);
+  c.addEventListener('click', e => { e.stopPropagation(); card.pinned = true; c.classList.add('open'); });
+  renderer.domElement.addEventListener('click', () => { hideCard(true); togglePicker(false); });
   document.addEventListener('keydown', e => {
     if (e.target.matches('input, select, textarea')) return;
     if (e.key === ' ') { e.preventDefault(); if (e.target.matches('button')) e.target.blur(); setPlaying(!state.playing); }
-    if (e.key === 'Escape') closePopup();
+    if (e.key === 'ArrowRight') setTime(state.t + DAY);
+    if (e.key === 'ArrowLeft') setTime(state.t - DAY);
+    if (e.key === 'Escape') { hideCard(true); togglePicker(false); }
   });
 }
 
@@ -582,14 +596,13 @@ function wirePanels() {
 let lastFrame = performance.now(), lastUi = 0;
 function frame(now) {
   const dt = (now - lastFrame) / 1000; lastFrame = now;
-  if (state.playing) setTime(state.t + dt * +$('speed').value * 864e5);
+  if (state.playing) state.t += dt * DAY; // 1 day per second
   stepFly(now);
   controls.update();
   updateScene();
   updateMarkers();
-  const alt = camera.position.length() - MOON_R;
-  $('dist').textContent = alt < 1e6 ? `altitude above the Moon: ${Math.round(alt).toLocaleString('en')} km` : `distance: ${(camera.position.length() / E.AU_KM).toFixed(3)} AU`;
-  if (now - lastUi > 100) { lastUi = now; if (!$('time-panel').hidden) drawTimeline(); if (state.playing) syncTimeInputs(); }
+  positionCard();
+  if (state.playing && now - lastUi > 100) { lastUi = now; syncTime(); }
   renderer.render(scene, camera);
   labels.render(scene, camera);
   requestAnimationFrame(frame);
@@ -599,7 +612,6 @@ function frame(now) {
 
 buildBodies();
 PLANETS.forEach(makeTrail);
-setTime(Date.now(), true);
 updateScene();
 applyTheme(state.theme);
 wireTime();
@@ -610,7 +622,7 @@ resize();
   const toEarth = new THREE.Vector3(...sub(lastPos.earth, lastPos.moon)).normalize();
   camera.position.copy(toEarth.multiplyScalar(0.55).add(new THREE.Vector3(0, 0, -0.85)).normalize().multiplyScalar(6500));
 }
-syncTimeInputs();
+syncTime();
 requestAnimationFrame(frame);
 loadMoon().catch(e => { $('loading').textContent = `Could not load Moon textures: ${e.message || e}`; });
 loadSites().then(addSites);
