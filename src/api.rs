@@ -216,17 +216,26 @@ pub fn compute_best_nearby(
             longest_night_hours: sm.longest_night_hours,
         }
     };
-    let mut all: Vec<Candidate> = offsets
-        .iter()
-        .filter_map(|&(e, n)| {
-            let dist = e.hypot(n);
-            let (lat, lon) = horizon::move_by(track.lat, track.lon, e.atan2(n).to_degrees(), dist);
-            let site = Site::new(lat, lon, track.alt_m).ok()?;
-            let mask = horizon::terrain_mask(&site)?;
-            let pts = metrics::remask(&centre.points, &centre.site, &site, &mask);
-            Some(candidate(&site, dist, mask.ground_m, &pts))
-        })
-        .collect();
+    // One terrain mask per candidate: spread whole candidates over the cores.
+    let eval = |&(e, n): &(f64, f64)| -> Option<Candidate> {
+        let dist = e.hypot(n);
+        let (lat, lon) = horizon::move_by(track.lat, track.lon, e.atan2(n).to_degrees(), dist);
+        let site = Site::new(lat, lon, track.alt_m).ok()?;
+        let mask = horizon::terrain_mask(&site)?;
+        let pts = metrics::remask(&centre.points, &centre.site, &site, &mask);
+        Some(candidate(&site, dist, mask.ground_m, &pts))
+    };
+    let chunk = offsets.len().div_ceil(horizon::cpu_threads()).max(1);
+    let mut all: Vec<Candidate> = std::thread::scope(|scope| {
+        let handles: Vec<_> = offsets
+            .chunks(chunk)
+            .map(|c| scope.spawn(move || c.iter().filter_map(eval).collect::<Vec<_>>()))
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().unwrap_or_default())
+            .collect()
+    });
     let centre_c = candidate(&centre.site, 0.0, centre.horizon.ground_m, &centre.points);
     all.sort_by(|a, b| b.sun_mean_fraction.total_cmp(&a.sun_mean_fraction));
     let best = all.first().cloned().unwrap_or_else(|| centre_c.clone());

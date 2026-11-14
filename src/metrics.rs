@@ -68,13 +68,19 @@ pub fn track(
     mask: &HorizonMask,
     req: &TrackRequest,
 ) -> Result<Vec<TrackPoint>, Box<dyn std::error::Error>> {
-    let mut out = Vec::new();
+    // Sample times first (same accumulation as before, so timestamps are unchanged)...
+    let mut times = Vec::new();
     let mut t = req.start;
     while t <= req.end {
-        let (sun, earth) = eph.sun_earth(&req.site, t)?;
+        times.push(t);
+        t += req.step;
+    }
+    // ...then the ephemeris, the expensive part, split across threads.
+    let point = |t: Epoch| -> Result<TrackPoint, String> {
+        let (sun, earth) = eph.sun_earth(&req.site, t).map_err(|e| e.to_string())?;
         let sh = mask.at(sun.az_deg);
         let eh = mask.at(earth.az_deg);
-        out.push(TrackPoint {
+        Ok(TrackPoint {
             t: iso(t),
             sun,
             earth,
@@ -82,10 +88,26 @@ pub fn track(
             earth_horizon_deg: eh,
             sun_vis: disk_fraction_above(sun.el_deg, sun.radius_deg, sh),
             earth_vis: disk_fraction_above(earth.el_deg, earth.radius_deg, eh),
-        });
-        t += req.step;
-    }
-    Ok(out)
+        })
+    };
+    let threads = std::thread::available_parallelism().map_or(4, |p| p.get().min(16));
+    let chunk = times.len().div_ceil(threads).max(64);
+    let parts = std::thread::scope(|scope| {
+        let handles: Vec<_> = times
+            .chunks(chunk)
+            .map(|c| {
+                scope.spawn(move || c.iter().map(|&t| point(t)).collect::<Result<Vec<_>, _>>())
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| {
+                h.join()
+                    .map_err(|_| "ephemeris worker panicked".to_string())?
+            })
+            .collect::<Result<Vec<_>, String>>()
+    })?;
+    Ok(parts.into_iter().flatten().collect())
 }
 
 /// Local east/north/up unit vectors (Moon-fixed) at a site.
