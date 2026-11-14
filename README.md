@@ -15,7 +15,7 @@ Team project for the Space Apps hackathon in Rzeszów.
 
 1. Put the NAIF kernels in `data/raw/kernels/` (git-ignored, ~45 MB — URLs in [RESEARCH.md](docs/RESEARCH.md) TL;DR):
    `de440s.bsp`, `moon_pa_de440_200625.bpc`, `moon_fk_de440.epa`
-2. Run the server and open http://localhost:3000
+2. Run the server and open http://localhost:3000 (sky plot, timeline, compare; `?recorded=1` replays saved responses without a server). 3D Moon-centred view: http://localhost:3000/solar.html
 
 ```bash
 cargo run
