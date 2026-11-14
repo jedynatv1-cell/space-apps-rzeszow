@@ -58,3 +58,7 @@ cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
 ## Toolchain
 
 Git, Rust (stable, MSVC) + clippy/rustfmt/rust-analyzer, Node.js LTS, Python 3, GitHub CLI.
+
+## License
+
+Code: MIT (see `LICENSE`). Data: NASA/JPL/LRO products are public domain; third-party libraries keep their own licenses (Three.js: MIT).

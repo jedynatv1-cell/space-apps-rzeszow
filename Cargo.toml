@@ -3,6 +3,7 @@ name = "space_apps_rzeszow"
 version = "0.1.0"
 edition = "2024"
 description = "Lunar Landing Site Navigator - NASA Space Apps 2026, Rzeszow"
+license = "MIT"
 
 [dependencies]
 anise = "0.10.6"
