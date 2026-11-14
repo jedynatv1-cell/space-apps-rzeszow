@@ -242,10 +242,10 @@ Plik maszynowy: `data/sites.json` (pola: `name, mission, country_or_agency, lat_
 | Peak near Cabeus B | Artemis | -82.2587 | -54.5846 | TAK | candidate_region | NASA⁸ + proxy USGS⁶ |
 | Haworth | Artemis | -87.45 | -5.17 | TAK | candidate_region | NASA⁸ + proxy USGS |
 | Malapert Massif | Artemis | -85.98 | -1.67 | TAK | candidate_region | NASA⁸ + proxy USGS (Mons Malapert) |
-| Mons Mouton Plateau | Artemis | -84.6 | 31.0 | TAK | candidate_region | NASA⁸ + proxy USGS |
-| Mons Mouton | Artemis | -84.6 | 31.0 | TAK | candidate_region | NASA⁸ + proxy USGS |
-| Nobile Rim 1 | Artemis | -85.2752 | 53.2725 | TAK | candidate_region | NASA⁸ + proxy USGS (środek krateru) |
-| Nobile Rim 2 | Artemis | -85.2752 | 53.2725 | TAK | candidate_region | jw. |
+| Mons Mouton Plateau | Artemis | -84.3 | 30.6 | TAK | candidate_region | NASA⁸ + proxy: środek mozaiki LROC NAC_ROI_MOUTNPLTLOA⁹ |
+| Mons Mouton | Artemis | -85.4 | 35.3 | TAK | candidate_region | NASA⁸ + proxy: środek mozaiki LROC NAC_ROI_MTMOUTONLOB⁹ (wspólnej z Nobile Rim 1) |
+| Nobile Rim 1 | Artemis | -85.28 | 38.7 | TAK | candidate_region | NASA⁸ + proxy wyliczony: zachodni brzeg krateru Nobile (środek USGS przesunięty o ~36 km)¹⁰ |
+| Nobile Rim 2 | Artemis | -84.2016 | 60.7 | TAK | candidate_region | NASA⁸ + proxy: najlepszy punkt w regionie DM2 wg arXiv:2406.19863¹¹ |
 | de Gerlache Rim 2 | Artemis | -88.4849 | -88.3447 | TAK | candidate_region | NASA⁸ + proxy USGS (środek krateru) |
 | Slater Plain | Artemis | -88.0792 | 111.2881 | TAK | candidate_region | NASA⁸ + proxy USGS (środek krateru) |
 
@@ -260,9 +260,12 @@ Plik maszynowy: `data/sites.json` (pola: `name, mission, country_or_agency, lat_
 6. USGS Gazetteer of Planetary Nomenclature (linki `planetarynames.wr.usgs.gov/Feature/<id>` w `sites.json`). Dane pobrane z `MOON_nomenclature_center_pts.zip`.
 7. https://en.wikipedia.org/wiki/Chang%27e_7
 8. https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/ (9 regionów, październik 2024)
+9. Mozaiki LROC NAC dla regionów Artemis (środek i granice w tabeli „About This RDR”): https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_MOUTNPLTLOA, https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_MTMOUTONLOB
+10. Wueller et al. (2026), JGR Planets, https://doi.org/10.1029/2025JE009434 (Nobile Rim 1 leży na Mons Mouton, przy zachodnim brzegu krateru Nobile). Przesunięcie o promień krateru policzyliśmy sami.
+11. https://arxiv.org/abs/2406.19863 (Acta Astronautica 226, 2025): punkt 84°12'05.6"S, 60°41'59.6"E
 
 **Ważne zastrzeżenia:**
-- **Regiony Artemis:** NASA nie publikuje współrzędnych środków regionów. W tabeli są środki nazwanych obiektów USGS jako **proxy**, a „Rim”/„Plain” mogą być przesunięte o dziesiątki km. W UI pokazujemy je jako „region (przybliżony)”. Uwaga: pary *Mons Mouton* / *Mons Mouton Plateau* oraz *Nobile Rim 1* / *Nobile Rim 2* mają dziś **identyczne** współrzędne proxy. Przed demo warto je rozsunąć ręcznie, np. wybierając punkty na krawędzi w Quickmap, bo inaczej porównanie da dwa identyczne wyniki. Kontekst 2026: Artemis III została przeprojektowana na misję testową na LEO (2027), a pierwsze lądowanie to **Artemis IV, 2028** (https://www.nasa.gov/news-release/nasa-adds-mission-to-artemis-lunar-program-updates-architecture/, https://www.nasa.gov/missions/artemis/nasas-artemis-iii-mission-to-test-future-moon-lander-operations/). Według NTRS 20250011660 lista 9 regionów dotyczy Artemis III. Czy obowiązuje dla Artemis IV: **niezweryfikowane**.
+- **Regiony Artemis:** NASA nie publikuje współrzędnych środków regionów. W tabeli są środki nazwanych obiektów USGS jako **proxy**, a „Rim”/„Plain” mogą być przesunięte o dziesiątki km. W UI pokazujemy je jako „region (przybliżony)”. Pary *Mons Mouton* / *Mons Mouton Plateau* oraz *Nobile Rim 1* / *Nobile Rim 2* miały identyczne współrzędne. Są już rozsunięte (L4, 14.11): środki mozaik LROC, zachodni brzeg Nobile, punkt z arXiv:2406.19863 (przypisy 9–11). Nadal to **proxy**, nie oficjalne środki regionów. Kontekst 2026: Artemis III została przeprojektowana na misję testową na LEO (2027), a pierwsze lądowanie to **Artemis IV, 2028** (https://www.nasa.gov/news-release/nasa-adds-mission-to-artemis-lunar-program-updates-architecture/, https://www.nasa.gov/missions/artemis/nasas-artemis-iii-mission-to-test-future-moon-lander-operations/). Według NTRS 20250011660 lista 9 regionów dotyczy Artemis III. Czy obowiązuje dla Artemis IV: **niezweryfikowane**.
 - **Lądowania w 2026:** nie znalazłem żadnego potwierdzonego. Chang'e 7 przesunięto (Wikipedia). Blue Moon MK1 „Endurance” (cel: Shackleton connecting ridge) wg źródeł wtórnych przesunięto na 2027, a współrzędnych nie zweryfikowałem, więc **pominięte w JSON**. IM-3 (Reiner Gamma), Griffin-1 (biegun płd., dokładny cel **niezweryfikowany**) i Blue Ghost M2 (far side; strona Firefly podaje podobno „Nassau Crater”, **niezweryfikowane**) to wszystko wg źródeł wtórnych 2026/2027, więc **pominięte**.
 
 ---
