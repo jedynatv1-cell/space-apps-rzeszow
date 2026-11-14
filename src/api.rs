@@ -35,6 +35,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/health", get(health))
         .route("/api/sites", get(sites))
         .route("/api/track", get(track))
+        .route("/api/best_nearby", get(best_nearby))
         .with_state(state)
 }
 
@@ -114,6 +115,127 @@ pub fn compute_track(s: &AppState, q: &TrackQuery) -> Result<TrackResponse, Stri
         horizon,
         summary,
         points,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchParams {
+    /// Search radius around (lat, lon), metres (<= 3000).
+    #[serde(default = "default_radius")]
+    pub radius_m: f64,
+    /// Candidate grid spacing, metres (>= 40, the DEM resolution).
+    #[serde(default = "default_grid")]
+    pub grid_m: f64,
+}
+
+fn default_radius() -> f64 {
+    500.0
+}
+fn default_grid() -> f64 {
+    100.0
+}
+
+/// Most candidates per search (each costs one terrain mask).
+pub const MAX_CANDIDATES: usize = 400;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Candidate {
+    pub lat_deg: f64,
+    pub lon_deg: f64,
+    /// Distance from the requested point, metres.
+    pub distance_m: f64,
+    pub ground_m: Option<f64>,
+    pub sun_visible_pct: f64,
+    pub sun_mean_fraction: f64,
+    pub earth_visible_pct: f64,
+    pub longest_night_hours: f64,
+}
+
+#[derive(Serialize)]
+pub struct BestNearbyResponse {
+    pub center: Candidate,
+    /// Highest sun_mean_fraction in the search area.
+    pub best: Candidate,
+    /// Top 5 by sun_mean_fraction.
+    pub top: Vec<Candidate>,
+    pub candidates_evaluated: usize,
+    pub radius_m: f64,
+    pub grid_m: f64,
+}
+
+async fn best_nearby(
+    State(s): State<Arc<AppState>>,
+    Query(track): Query<TrackQuery>,
+    Query(p): Query<SearchParams>,
+) -> Response {
+    match tokio::task::spawn_blocking(move || compute_best_nearby(&s, &track, &p)).await {
+        Ok(Ok(resp)) => Json(resp).into_response(),
+        Ok(Err(msg)) => (StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// Searches a grid around the site for the best-lit spot: one ephemeris run at the
+/// centre, then each candidate gets its own terrain mask and re-evaluated track.
+pub fn compute_best_nearby(
+    s: &AppState,
+    track: &TrackQuery,
+    q: &SearchParams,
+) -> Result<BestNearbyResponse, String> {
+    if !(q.radius_m > 0.0 && q.radius_m <= 3000.0 && q.grid_m >= 40.0) {
+        return Err("need 0 < radius_m <= 3000 and grid_m >= 40".into());
+    }
+    let k = (q.radius_m / q.grid_m).floor() as i64;
+    let offsets: Vec<(f64, f64)> = (-k..=k)
+        .flat_map(|i| (-k..=k).map(move |j| (i as f64 * q.grid_m, j as f64 * q.grid_m)))
+        .filter(|(e, n)| e.hypot(*n) <= q.radius_m + 1e-9)
+        .collect();
+    if offsets.len() > MAX_CANDIDATES {
+        return Err(format!(
+            "{} candidates, max {MAX_CANDIDATES}: increase grid_m",
+            offsets.len()
+        ));
+    }
+    let centre = compute_track(s, track)?;
+    if !centre.horizon.source.starts_with("lola:") {
+        return Err("site is outside the loaded DEM: no terrain to search".into());
+    }
+    let step_h = track.step_min / 60.0;
+    let margin = track.dte_margin_deg;
+    let candidate = |site: &Site, dist: f64, ground: Option<f64>, pts: &[TrackPoint]| {
+        let sm = metrics::summarize(pts, step_h, margin);
+        Candidate {
+            lat_deg: site.lat_deg,
+            lon_deg: site.lon_deg,
+            distance_m: dist,
+            ground_m: ground,
+            sun_visible_pct: sm.sun_visible_pct,
+            sun_mean_fraction: sm.sun_mean_fraction,
+            earth_visible_pct: sm.earth_visible_pct,
+            longest_night_hours: sm.longest_night_hours,
+        }
+    };
+    let mut all: Vec<Candidate> = offsets
+        .iter()
+        .filter_map(|&(e, n)| {
+            let dist = e.hypot(n);
+            let (lat, lon) = horizon::move_by(track.lat, track.lon, e.atan2(n).to_degrees(), dist);
+            let site = Site::new(lat, lon, track.alt_m).ok()?;
+            let mask = horizon::terrain_mask(&site)?;
+            let pts = metrics::remask(&centre.points, &centre.site, &site, &mask);
+            Some(candidate(&site, dist, mask.ground_m, &pts))
+        })
+        .collect();
+    let centre_c = candidate(&centre.site, 0.0, centre.horizon.ground_m, &centre.points);
+    all.sort_by(|a, b| b.sun_mean_fraction.total_cmp(&a.sun_mean_fraction));
+    let best = all.first().cloned().unwrap_or_else(|| centre_c.clone());
+    Ok(BestNearbyResponse {
+        center: centre_c,
+        best,
+        candidates_evaluated: all.len(),
+        top: all.into_iter().take(5).collect(),
+        radius_m: q.radius_m,
+        grid_m: q.grid_m,
     })
 }
 

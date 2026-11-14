@@ -108,6 +108,7 @@ impl Dem {
     }
 
     /// Inverse of [`Dem::latlon_to_xy`].
+    #[cfg(test)]
     pub fn xy_to_latlon(&self, x: f64, y: f64) -> (f64, f64) {
         let colat = 2.0 * (x.hypot(y) / (2.0 * self.label.radius_m)).atan();
         let lat = (90.0 - colat.to_degrees()) * self.label.center_lat.signum();

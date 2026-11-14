@@ -82,6 +82,61 @@ pub fn track(
     Ok(out)
 }
 
+/// Local east/north/up unit vectors (Moon-fixed) at a site.
+fn enu(site: &Site) -> [[f64; 3]; 3] {
+    let (sp, cp) = site.lat_deg.to_radians().sin_cos();
+    let (sl, cl) = site.lon_deg.to_radians().sin_cos();
+    [
+        [-sl, cl, 0.0],
+        [-sp * cl, -sp * sl, cp],
+        [cp * cl, cp * sl, sp],
+    ]
+}
+
+/// Re-express a direction seen from `from` in the local frame of `to`. Near the pole a
+/// few hundred metres rotate local north by degrees, so azimuths must be transformed;
+/// the parallax of the shift itself (< 0.02 deg for 500 m) is neglected.
+fn transfer(d: &AzEl, from: &[[f64; 3]; 3], to: &[[f64; 3]; 3]) -> AzEl {
+    let (sa, ca) = d.az_deg.to_radians().sin_cos();
+    let (se, ce) = d.el_deg.to_radians().sin_cos();
+    let local = [ce * sa, ce * ca, se];
+    let v: [f64; 3] = std::array::from_fn(|k| (0..3).map(|i| local[i] * from[i][k]).sum());
+    let dot = |b: &[f64; 3]| v[0] * b[0] + v[1] * b[1] + v[2] * b[2];
+    let (e, n, u) = (dot(&to[0]), dot(&to[1]), dot(&to[2]));
+    AzEl {
+        az_deg: e.atan2(n).to_degrees().rem_euclid(360.0),
+        el_deg: u.clamp(-1.0, 1.0).asin().to_degrees(),
+        ..*d
+    }
+}
+
+/// Re-evaluate a track computed at `from` for a nearby site `to` with its own mask,
+/// without re-running the ephemeris (used by the best-nearby search).
+pub fn remask(
+    points: &[TrackPoint],
+    from: &Site,
+    to: &Site,
+    mask: &HorizonMask,
+) -> Vec<TrackPoint> {
+    let (bf, bt) = (enu(from), enu(to));
+    points
+        .iter()
+        .map(|p| {
+            let (sun, earth) = (transfer(&p.sun, &bf, &bt), transfer(&p.earth, &bf, &bt));
+            let (sh, eh) = (mask.at(sun.az_deg), mask.at(earth.az_deg));
+            TrackPoint {
+                t: p.t.clone(),
+                sun,
+                earth,
+                sun_horizon_deg: sh,
+                earth_horizon_deg: eh,
+                sun_vis: disk_fraction_above(sun.el_deg, sun.radius_deg, sh),
+                earth_vis: disk_fraction_above(earth.el_deg, earth.radius_deg, eh),
+            }
+        })
+        .collect()
+}
+
 pub fn summarize(points: &[TrackPoint], step_hours: f64, dte_margin_deg: f64) -> Summary {
     let n = points.len().max(1) as f64;
     let sun_on: Vec<bool> = points.iter().map(|p| p.sun_vis > 0.0).collect();
@@ -170,5 +225,57 @@ mod tests {
     fn iso_format() {
         let t = Epoch::from_gregorian_utc(2026, 11, 14, 9, 5, 7, 0);
         assert_eq!(iso(t), "2026-11-14T09:05:07Z");
+    }
+}
+
+#[cfg(test)]
+mod remask_tests {
+    use super::*;
+
+    fn d(az: f64, el: f64) -> AzEl {
+        AzEl {
+            az_deg: az,
+            el_deg: el,
+            radius_deg: 0.27,
+            distance_km: 1.5e8,
+        }
+    }
+
+    #[test]
+    fn transfer_identity_and_meridian_convergence() {
+        let a = Site::new(-89.68, -166.0, 0.0).unwrap();
+        let ba = enu(&a);
+        let same = transfer(&d(123.0, 1.5), &ba, &ba);
+        assert!((same.az_deg - 123.0).abs() < 1e-9 && (same.el_deg - 1.5).abs() < 1e-9);
+        // 500 m east of a point 10 km from the pole: local north turns by ~2.9 deg,
+        // matching the ephemeris run directly at the shifted site (checked when kernels exist).
+        let (lat, lon) = crate::horizon::move_by(a.lat_deg, a.lon_deg, 90.0, 500.0);
+        let b = Site::new(lat, lon, 0.0).unwrap();
+        let moved = transfer(&d(123.0, 1.5), &ba, &enu(&b));
+        let turn = (moved.az_deg - 123.0).abs();
+        assert!((2.0..4.0).contains(&turn), "turn {turn}");
+        let Ok(eph) = Ephem::load("data/raw/kernels") else {
+            return;
+        };
+        let t = Epoch::from_gregorian_utc_at_midnight(2026, 11, 20);
+        let (sa, ea) = eph.sun_earth(&a, t).unwrap();
+        let (sb, eb) = eph.sun_earth(&b, t).unwrap();
+        for (x, y) in [
+            (transfer(&sa, &ba, &enu(&b)), sb),
+            (transfer(&ea, &ba, &enu(&b)), eb),
+        ] {
+            assert!(
+                (x.az_deg - y.az_deg).abs() < 0.05,
+                "{} vs {}",
+                x.az_deg,
+                y.az_deg
+            );
+            assert!(
+                (x.el_deg - y.el_deg).abs() < 0.05,
+                "{} vs {}",
+                x.el_deg,
+                y.el_deg
+            );
+        }
     }
 }

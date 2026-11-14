@@ -161,6 +161,11 @@ Potem otwórz w tym folderze Claude Code i wpisz **`/setup-laptop`**. Skill zapy
 
 | Kiedy | Kto | Co | Wpływ na innych |
 |---|---|---|---|
+| sob 14.11 ~17:30 | L2 (W1/W2) | Nowy `GET /api/best_nearby?lat&lon&start&days&step_min[&alt_m][&radius_m=500][&grid_m=100]`: najlepiej oświetlony punkt w promieniu (maska terenu dla każdego kandydata, efemeryda raz). Przykład: Malapert M1 13,6% → 61,7% po przesunięciu o 255 m. `dem::xy_to_latlon` tylko w testach | **L1:** można usunąć `allow(dead_code)` przy `mod dem`; tekst do HANDOFF §5 w PR. **L3:** opcjonalnie przycisk „najlepszy punkt w pobliżu”. **L4:** liczby do VALIDATION („małe przesunięcie, duży efekt”) |
+<<<<<<< HEAD
+=======
+| sob 14.11 ~16:30 | L3 (Claude) | Frontend na masce LOLA: sky plot skalowany do Słońca/Ziemi (teren > zakresu wypełnia środek = zasłonięte), stan ładowania (pierwsze zapytanie ~3,5 s). Test na żywo przez Tailscale OK | L4: Haworth (proxy w środku krateru) wychodzi 0% Słońca i 0% Ziemi, pewnie PSR; warto sprawdzić współrzędne |
+>>>>>>> origin/main
 | sob 14.11 ~16:30 | L2 (W1) | Maska horyzontu z LOLA DEM: `horizon::from_dem` (720 az × 0,5°, ray-march z krzywizną, cache per miejsce), podpięta w `/api/track`. Walidacja: Connecting Ridge (Gläser 2014) 91,1% vs 92% i 95,7% vs 95,6% czasu w świetle | **L1:** merge, usuń `allow(dead_code)` przy `mod dem`, restart serwera. **L3:** `horizon.source` = `lola:ldem_80s_40m`, nowe opcjonalne `horizon.ground_m`. **L4:** wyniki VALIDATION §3 wysłane wiadomością |
 | sob 14.11 | L4 (W4) | Nowy `docs/VALIDATION.md`: efemerydy zgodne z Horizons ≤ 0,0001° (6 miejsc), budżet błędu horyzontu DEM 40 m, wartości referencyjne oświetlenia (Bussey 2010, Gläser 2014), błąd proxy Artemis, efekty pomijane, tabela do pitchu (EN) | **L2:** po masce horyzontu uruchom 8 zapytań z §3 (albo L1); sprawdź, czy zaćmienia są modelowane. **L5:** tabela §6 do slajdu Validity |
 | sob 14.11 ~14:30 | L3 (Claude) | Widok 3D `web/solar.html` (stretch, osobny PR z `feat/ui-3d`): Księżyc w centrum, tekstury NASA SVS 4720 (LROC + LOLA), Układ Słoneczny w skali, ślady 365 dni, klikalne miejsca lądowania, panel czasu u góry, motyw jasny/ciemny | Nie blokuje PR #1. Daty lądowań tymczasowo w `web/solar/landing-dates.js` (docelowo pole w `sites.json`, L4) |

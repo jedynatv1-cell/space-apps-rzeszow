@@ -178,6 +178,21 @@ fn terrain() -> &'static Terrain {
     })
 }
 
+/// Uncached terrain mask from the loaded DEMs, `None` outside them (for searches over
+/// many nearby points that should not flood the per-site cache).
+pub fn terrain_mask(site: &Site) -> Option<HorizonMask> {
+    from_dem(&terrain().dems, site, MASK_SAMPLES)
+}
+
+/// Point `dist_m` metres from (`lat`, `lon`) along azimuth `az_deg` (clockwise from
+/// north) on the reference sphere. Returns (lat, lon) in degrees, lon in -180..180.
+pub fn move_by(lat: f64, lon: f64, az_deg: f64, dist_m: f64) -> (f64, f64) {
+    let (s, c) = lat.to_radians().sin_cos();
+    let theta = dist_m / (MOON_RADIUS_KM * 1000.0);
+    let (la, lo) = destination(s, c, lon, az_deg.to_radians(), theta);
+    (la, (lo + 180.0).rem_euclid(360.0) - 180.0)
+}
+
 /// Horizon for a site: LOLA terrain when a loaded DEM covers it, otherwise the smooth
 /// sphere. Cached per (lat, lon, alt), so repeated requests for a site are instant.
 pub fn for_site(site: &Site) -> Arc<HorizonMask> {
