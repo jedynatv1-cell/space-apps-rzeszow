@@ -44,6 +44,12 @@ pub struct Summary {
     pub next_earthset: Option<String>,
     pub hours_to_sunset: Option<f64>,
     pub hours_to_earthset: Option<f64>,
+    /// First time after the start when the Sun starts to rise / Earth's centre clears the
+    /// skyline + margin, after having been down. Null if it is already up and stays up.
+    pub next_sunrise: Option<String>,
+    pub next_earthrise: Option<String>,
+    pub hours_to_sunrise: Option<f64>,
+    pub hours_to_earthrise: Option<f64>,
     pub sunlight_windows: Vec<Window>,
     pub dte_windows: Vec<Window>,
 }
@@ -62,13 +68,19 @@ pub fn track(
     mask: &HorizonMask,
     req: &TrackRequest,
 ) -> Result<Vec<TrackPoint>, Box<dyn std::error::Error>> {
-    let mut out = Vec::new();
+    // Sample times first (same accumulation as before, so timestamps are unchanged)...
+    let mut times = Vec::new();
     let mut t = req.start;
     while t <= req.end {
-        let (sun, earth) = eph.sun_earth(&req.site, t)?;
+        times.push(t);
+        t += req.step;
+    }
+    // ...then the ephemeris, the expensive part, split across threads.
+    let point = |t: Epoch| -> Result<TrackPoint, String> {
+        let (sun, earth) = eph.sun_earth(&req.site, t).map_err(|e| e.to_string())?;
         let sh = mask.at(sun.az_deg);
         let eh = mask.at(earth.az_deg);
-        out.push(TrackPoint {
+        Ok(TrackPoint {
             t: iso(t),
             sun,
             earth,
@@ -76,10 +88,81 @@ pub fn track(
             earth_horizon_deg: eh,
             sun_vis: disk_fraction_above(sun.el_deg, sun.radius_deg, sh),
             earth_vis: disk_fraction_above(earth.el_deg, earth.radius_deg, eh),
-        });
-        t += req.step;
+        })
+    };
+    let threads = std::thread::available_parallelism().map_or(4, |p| p.get().min(16));
+    let chunk = times.len().div_ceil(threads).max(64);
+    let parts = std::thread::scope(|scope| {
+        let handles: Vec<_> = times
+            .chunks(chunk)
+            .map(|c| {
+                scope.spawn(move || c.iter().map(|&t| point(t)).collect::<Result<Vec<_>, _>>())
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| {
+                h.join()
+                    .map_err(|_| "ephemeris worker panicked".to_string())?
+            })
+            .collect::<Result<Vec<_>, String>>()
+    })?;
+    Ok(parts.into_iter().flatten().collect())
+}
+
+/// Local east/north/up unit vectors (Moon-fixed) at a site.
+fn enu(site: &Site) -> [[f64; 3]; 3] {
+    let (sp, cp) = site.lat_deg.to_radians().sin_cos();
+    let (sl, cl) = site.lon_deg.to_radians().sin_cos();
+    [
+        [-sl, cl, 0.0],
+        [-sp * cl, -sp * sl, cp],
+        [cp * cl, cp * sl, sp],
+    ]
+}
+
+/// Re-express a direction seen from `from` in the local frame of `to`. Near the pole a
+/// few hundred metres rotate local north by degrees, so azimuths must be transformed;
+/// the parallax of the shift itself (< 0.02 deg for 500 m) is neglected.
+fn transfer(d: &AzEl, from: &[[f64; 3]; 3], to: &[[f64; 3]; 3]) -> AzEl {
+    let (sa, ca) = d.az_deg.to_radians().sin_cos();
+    let (se, ce) = d.el_deg.to_radians().sin_cos();
+    let local = [ce * sa, ce * ca, se];
+    let v: [f64; 3] = std::array::from_fn(|k| (0..3).map(|i| local[i] * from[i][k]).sum());
+    let dot = |b: &[f64; 3]| v[0] * b[0] + v[1] * b[1] + v[2] * b[2];
+    let (e, n, u) = (dot(&to[0]), dot(&to[1]), dot(&to[2]));
+    AzEl {
+        az_deg: e.atan2(n).to_degrees().rem_euclid(360.0),
+        el_deg: u.clamp(-1.0, 1.0).asin().to_degrees(),
+        ..*d
     }
-    Ok(out)
+}
+
+/// Re-evaluate a track computed at `from` for a nearby site `to` with its own mask,
+/// without re-running the ephemeris (used by the best-nearby search).
+pub fn remask(
+    points: &[TrackPoint],
+    from: &Site,
+    to: &Site,
+    mask: &HorizonMask,
+) -> Vec<TrackPoint> {
+    let (bf, bt) = (enu(from), enu(to));
+    points
+        .iter()
+        .map(|p| {
+            let (sun, earth) = (transfer(&p.sun, &bf, &bt), transfer(&p.earth, &bf, &bt));
+            let (sh, eh) = (mask.at(sun.az_deg), mask.at(earth.az_deg));
+            TrackPoint {
+                t: p.t.clone(),
+                sun,
+                earth,
+                sun_horizon_deg: sh,
+                earth_horizon_deg: eh,
+                sun_vis: disk_fraction_above(sun.el_deg, sun.radius_deg, sh),
+                earth_vis: disk_fraction_above(earth.el_deg, earth.radius_deg, eh),
+            }
+        })
+        .collect()
 }
 
 pub fn summarize(points: &[TrackPoint], step_hours: f64, dte_margin_deg: f64) -> Summary {
@@ -97,6 +180,13 @@ pub fn summarize(points: &[TrackPoint], step_hours: f64, dte_margin_deg: f64) ->
         let up = on.iter().position(|&b| b)?;
         on[up..].iter().position(|&b| !b).map(|i| i + up)
     };
+    let first_on = |on: &[bool]| {
+        // Only a "rise" if it was down at some point before coming up.
+        let down = on.iter().position(|&b| !b)?;
+        on[down..].iter().position(|&b| b).map(|i| i + down)
+    };
+    let next_sunrise = first_on(&sun_on);
+    let next_earthrise = first_on(&dte_on);
     let next_sunset = first_off(&sun_on);
     let next_earthset = first_off(&dte_on);
 
@@ -110,6 +200,10 @@ pub fn summarize(points: &[TrackPoint], step_hours: f64, dte_margin_deg: f64) ->
         next_earthset: next_earthset.map(|i| points[i].t.clone()),
         hours_to_sunset: next_sunset.map(|i| i as f64 * step_hours),
         hours_to_earthset: next_earthset.map(|i| i as f64 * step_hours),
+        next_sunrise: next_sunrise.map(|i| points[i].t.clone()),
+        next_earthrise: next_earthrise.map(|i| points[i].t.clone()),
+        hours_to_sunrise: next_sunrise.map(|i| i as f64 * step_hours),
+        hours_to_earthrise: next_earthrise.map(|i| i as f64 * step_hours),
         sunlight_windows,
         dte_windows,
     }
@@ -170,5 +264,96 @@ mod tests {
     fn iso_format() {
         let t = Epoch::from_gregorian_utc(2026, 11, 14, 9, 5, 7, 0);
         assert_eq!(iso(t), "2026-11-14T09:05:07Z");
+    }
+}
+
+#[cfg(test)]
+mod remask_tests {
+    use super::*;
+
+    fn d(az: f64, el: f64) -> AzEl {
+        AzEl {
+            az_deg: az,
+            el_deg: el,
+            radius_deg: 0.27,
+            distance_km: 1.5e8,
+        }
+    }
+
+    #[test]
+    fn transfer_identity_and_meridian_convergence() {
+        let a = Site::new(-89.68, -166.0, 0.0).unwrap();
+        let ba = enu(&a);
+        let same = transfer(&d(123.0, 1.5), &ba, &ba);
+        assert!((same.az_deg - 123.0).abs() < 1e-9 && (same.el_deg - 1.5).abs() < 1e-9);
+        // 500 m east of a point 10 km from the pole: local north turns by ~2.9 deg,
+        // matching the ephemeris run directly at the shifted site (checked when kernels exist).
+        let (lat, lon) = crate::horizon::move_by(a.lat_deg, a.lon_deg, 90.0, 500.0);
+        let b = Site::new(lat, lon, 0.0).unwrap();
+        let moved = transfer(&d(123.0, 1.5), &ba, &enu(&b));
+        let turn = (moved.az_deg - 123.0).abs();
+        assert!((2.0..4.0).contains(&turn), "turn {turn}");
+        let Ok(eph) = Ephem::load("data/raw/kernels") else {
+            return;
+        };
+        let t = Epoch::from_gregorian_utc_at_midnight(2026, 11, 20);
+        let (sa, ea) = eph.sun_earth(&a, t).unwrap();
+        let (sb, eb) = eph.sun_earth(&b, t).unwrap();
+        for (x, y) in [
+            (transfer(&sa, &ba, &enu(&b)), sb),
+            (transfer(&ea, &ba, &enu(&b)), eb),
+        ] {
+            assert!(
+                (x.az_deg - y.az_deg).abs() < 0.05,
+                "{} vs {}",
+                x.az_deg,
+                y.az_deg
+            );
+            assert!(
+                (x.el_deg - y.el_deg).abs() < 0.05,
+                "{} vs {}",
+                x.el_deg,
+                y.el_deg
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod rise_tests {
+    use super::*;
+
+    fn pt(i: usize, sun_up: bool, earth_up: bool) -> TrackPoint {
+        let d = |el: f64| AzEl {
+            az_deg: 0.0,
+            el_deg: el,
+            radius_deg: 0.27,
+            distance_km: 1.0,
+        };
+        TrackPoint {
+            t: format!("T{i}"),
+            sun: d(0.0),
+            earth: d(if earth_up { 1.0 } else { -1.0 }),
+            sun_horizon_deg: 0.0,
+            earth_horizon_deg: 0.0,
+            sun_vis: if sun_up { 1.0 } else { 0.0 },
+            earth_vis: 0.0,
+        }
+    }
+
+    #[test]
+    fn rise_and_set_times() {
+        let up = [false, false, true, true, false];
+        let pts: Vec<_> = up.iter().enumerate().map(|(i, &u)| pt(i, u, !u)).collect();
+        let s = summarize(&pts, 2.0, 0.0);
+        assert_eq!(s.next_sunrise.as_deref(), Some("T2"));
+        assert_eq!(s.hours_to_sunrise, Some(4.0));
+        assert_eq!(s.next_sunset.as_deref(), Some("T4"));
+        // Earth is up at the start: earthset first, then earthrise.
+        assert_eq!(s.next_earthset.as_deref(), Some("T2"));
+        assert_eq!(s.next_earthrise.as_deref(), Some("T4"));
+        // Always up: no rise.
+        let pts: Vec<_> = (0..4).map(|i| pt(i, true, true)).collect();
+        assert_eq!(summarize(&pts, 1.0, 0.0).next_sunrise, None);
     }
 }

@@ -127,7 +127,7 @@
     "south_polar": false,
     "status": "planned",
     "source_url": "https://www.nasa.gov/wp-content/uploads/2023/12/np-2023-12-017-jsc-clps-astrobotic-press-kit-update-508.pdf",
-    "coord_note": "Never reached the Moon (propulsion failure, re-entered Earth atmosphere 18 Jan 2024). Coordinates = USGS gazetteer center of Sinus Viscositatis (http://planetarynames.wr.usgs.gov/Feature/16118), NOT the exact target point - niezweryfikowane."
+    "coord_note": "Never reached the Moon (propulsion failure, re-entered Earth atmosphere 18 Jan 2024). Coordinates = USGS gazetteer center of Sinus Viscositatis (http://planetarynames.wr.usgs.gov/Feature/16118), NOT the exact target point - unverified."
   },
   {
     "name": "Statio Shiv Shakti",
@@ -210,7 +210,7 @@
     "south_polar": true,
     "status": "planned",
     "source_url": "https://en.wikipedia.org/wiki/Chang%27e_7",
-    "coord_note": "Launch postponed (was Aug 2026, now 2027 per Wikipedia). Approximate coordinates from Wikipedia - niezweryfikowane w zrodle pierwotnym."
+    "coord_note": "Launch postponed (was Aug 2026, now 2027 per Wikipedia). Approximate coordinates from Wikipedia - unverified in the primary source."
   },
   {
     "name": "Peak near Cabeus B (candidate region)",
@@ -221,18 +221,18 @@
     "south_polar": true,
     "status": "candidate_region",
     "source_url": "https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/",
-    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'Cabeus B' (http://planetarynames.wr.usgs.gov/Feature/8058) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. niezweryfikowane jako srodek regionu."
+    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'Cabeus B' (http://planetarynames.wr.usgs.gov/Feature/8058) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. Not verified as the region centre."
   },
   {
     "name": "Haworth (candidate region)",
     "mission": "Artemis crewed landing (regions announced for Artemis III; first landing now Artemis IV, 2028)",
     "country_or_agency": "NASA / USA",
-    "lat_deg": -87.45,
-    "lon_deg": -5.17,
+    "lat_deg": -86.75,
+    "lon_deg": -23.67,
     "south_polar": true,
     "status": "candidate_region",
     "source_url": "https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/",
-    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'Haworth crater' (http://planetarynames.wr.usgs.gov/Feature/14502) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. niezweryfikowane jako srodek regionu."
+    "coord_note": "Region list from NASA (Oct 2024). Coordinates = center of the bounds of the LROC NAC mosaic made for this region, 'Haworth ... low-Sun controlled NAC mosaic' (https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_HAWORTH_LOC, bounds -87.39..-86.11 lat, -34.98..-12.36 lon). PROXY: mosaic center, not an official region center. Previously the USGS center of Haworth crater (-87.45, -5.17), which lies on the permanently shadowed crater floor (0% Sun, 0% Earth with the LOLA horizon)."
   },
   {
     "name": "Malapert Massif (candidate region)",
@@ -243,7 +243,7 @@
     "south_polar": true,
     "status": "candidate_region",
     "source_url": "https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/",
-    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'Mons Malapert' (http://planetarynames.wr.usgs.gov/Feature/16338) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. niezweryfikowane jako srodek regionu."
+    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'Mons Malapert' (http://planetarynames.wr.usgs.gov/Feature/16338) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. Not verified as the region centre."
   },
   {
     "name": "Mons Mouton Plateau (candidate region)",
@@ -276,7 +276,7 @@
     "south_polar": true,
     "status": "candidate_region",
     "source_url": "https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/",
-    "coord_note": "Region list from NASA (Oct 2024). DERIVED PROXY: western rim of Nobile crater = USGS center (-85.2752, 53.2725; http://planetarynames.wr.usgs.gov/Feature/4321) moved ~36 km (crater radius) west along the parallel. Region described as on Mons Mouton near the western rim of Nobile (Wueller et al. 2026, JGR Planets, https://doi.org/10.1029/2025JE009434); point lies inside LROC mosaic NAC_ROI_MTMOUTONLOB. niezweryfikowane jako srodek regionu."
+    "coord_note": "Region list from NASA (Oct 2024). DERIVED PROXY: western rim of Nobile crater = USGS center (-85.2752, 53.2725; http://planetarynames.wr.usgs.gov/Feature/4321) moved ~36 km (crater radius) west along the parallel. Region described as on Mons Mouton near the western rim of Nobile (Wueller et al. 2026, JGR Planets, https://doi.org/10.1029/2025JE009434); point lies inside LROC mosaic NAC_ROI_MTMOUTONLOB. Not verified as the region centre."
   },
   {
     "name": "Nobile Rim 2 (candidate region)",
@@ -298,7 +298,7 @@
     "south_polar": true,
     "status": "candidate_region",
     "source_url": "https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/",
-    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'de Gerlache crater' (http://planetarynames.wr.usgs.gov/Feature/1439) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. niezweryfikowane jako srodek regionu."
+    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'de Gerlache crater' (http://planetarynames.wr.usgs.gov/Feature/1439) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. Not verified as the region centre."
   },
   {
     "name": "Slater Plain (candidate region)",
@@ -309,6 +309,6 @@
     "south_polar": true,
     "status": "candidate_region",
     "source_url": "https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/",
-    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'Slater crater' (http://planetarynames.wr.usgs.gov/Feature/15325) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. niezweryfikowane jako srodek regionu."
+    "coord_note": "Region list from NASA (Oct 2024). Coordinates are the USGS gazetteer center of the named feature 'Slater crater' (http://planetarynames.wr.usgs.gov/Feature/15325) used as a PROXY - NASA did not publish region-center coordinates; actual region may be offset by tens of km. Not verified as the region centre."
   }
 ]

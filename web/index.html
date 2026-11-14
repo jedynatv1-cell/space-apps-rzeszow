@@ -4,49 +4,69 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lunar Landing Site Navigator</title>
-<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="app.css?v=20261114k">
 </head>
 <body>
 <header>
-  <div>
-    <h1>Lunar Landing Site Navigator</h1>
-    <p>Sun &amp; Earth above the local horizon at lunar landing sites: solar power and direct-to-Earth windows. <a href="solar.html" style="color:#4ea1ff">3D Moon &amp; Solar System →</a></p>
+  <div class="brand">
+    <div class="brand-top">
+      <span class="kicker">LUNAR SOUTH POLE TELEMETRY &amp; HORIZON ANALYSIS</span>
+      <h1>Lunar Landing Site Navigator</h1>
+    </div>
+    <p>Topocentric Sun &amp; Earth visibility against real LRO LOLA terrain — power budgets &amp; direct-to-Earth (DTE) windows.</p>
   </div>
-  <details id="server">
-    <summary>Server: <span id="server-label">…</span></summary>
-    <form id="server-form">
-      <label>API base URL <input id="api" placeholder="http://192.168.1.23:3000" size="28"></label>
-      <button type="submit">Connect</button>
-      <button type="button" id="use-demo" class="secondary">Use demo data</button>
-      <button type="button" id="use-recorded" class="secondary">Use recorded L1 data</button>
-    </form>
-  </details>
+  <div class="header-actions">
+    <a class="nav-pill" href="solar.html">
+      <span class="nav-dot"></span>3D Moon &amp; Solar System →
+    </a>
+    <div class="mode" role="radiogroup" aria-label="Detail level">
+      <button type="button" role="radio" data-mode="public" title="Plain-language summary: countdowns, sunlight and Earth contact">Public</button>
+      <button type="button" role="radio" data-mode="expert" title="Everything: coordinates, azimuth/elevation, terrain angles, link gaps">Expert</button>
+    </div>
+    <details id="server">
+      <summary>API: <span id="server-label">…</span></summary>
+      <form id="server-form">
+        <label>API base URL <input id="api" placeholder="empty = this server, or http://laptop-l1:3000" size="28"></label>
+        <div class="server-btns">
+          <button type="submit">Connect</button>
+          <button type="button" id="use-demo" class="secondary">Demo data</button>
+          <button type="button" id="use-recorded" class="secondary">Recorded L1</button>
+        </div>
+      </form>
+    </details>
+  </div>
 </header>
 
 <div id="demo-banner" hidden>DEMO DATA: approximate geometry and synthetic terrain, not the real ephemeris. Connect to the server for real results.</div>
 
 <main>
-  <form id="f" class="panel controls">
-    <nav class="tabs" role="tablist">
-      <button type="button" role="tab" data-tab="explore" aria-selected="true">Explore a site</button>
-      <button type="button" role="tab" data-tab="compare" aria-selected="false">Compare sites</button>
-    </nav>
+  <form id="f" class="panel controls" novalidate>
+    <div class="controls-top">
+      <nav class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="explore" aria-selected="true">Explore a site</button>
+        <button type="button" role="tab" data-tab="compare" aria-selected="false">Compare sites</button>
+      </nav>
+      <div class="quick-actions" data-only="explore">
+        <button type="button" id="best" class="secondary" title="Search a 500 m radius (100 m grid) for the spot with the most sunlight">Best spot within 500 m</button>
+        <button type="button" id="csv" class="secondary expert" title="Download full ephemeris and terrain horizon track as CSV">Export CSV ↓</button>
+      </div>
+    </div>
     <div class="row" data-only="explore">
-      <label>Site <select id="site"></select></label>
-      <label>Lat° <input id="lat" type="number" step="0.001" value="-89.45" class="num"></label>
-      <label>Lon° (E) <input id="lon" type="number" step="0.001" value="-129.78" class="num"></label>
+      <label class="grow">Landing site <select id="site"></select></label>
+      <label class="expert coord">Lat (°) <input id="lat" type="number" step="any" min="-90" max="90" value="-89.45" class="num"></label>
+      <label class="expert coord">Lon (°E) <input id="lon" type="number" step="any" min="-180" max="180" value="-129.78" class="num"></label>
     </div>
     <div class="row" data-only="compare" hidden>
-      <label>Site A <select class="cmp-site"></select></label>
-      <label>Site B <select class="cmp-site"></select></label>
-      <label>Site C <select class="cmp-site"></select></label>
+      <label class="grow">Site A <select class="cmp-site"></select></label>
+      <label class="grow">Site B <select class="cmp-site"></select></label>
+      <label class="grow">Site C <select class="cmp-site"></select></label>
     </div>
     <div class="row">
       <label>Start (UTC) <input id="start" type="datetime-local" value="2026-11-14T00:00"></label>
-      <label>Days <input id="days" type="number" min="1" max="400" value="30" class="num"></label>
-      <label>Step (min) <input id="step" type="number" min="1" value="60" class="num"></label>
+      <label>Window (days) <input id="days" type="number" step="any" min="1" max="400" value="30" class="num"></label>
+      <label class="expert">Step (min) <input id="step" type="number" step="any" min="1" value="60" class="num"></label>
       <button type="submit">Compute</button>
-      <span class="slips">Shift: <button type="button" data-d="-7">−7 d</button><button type="button" data-d="-1">−1 d</button><button type="button" data-d="1">+1 d</button><button type="button" data-d="7">+7 d</button></span>
+      <span class="slips"><span class="slips-lbl">Slip</span><button type="button" data-d="-7">−7d</button><button type="button" data-d="-1">−1d</button><button type="button" data-d="1">+1d</button><button type="button" data-d="7">+7d</button></span>
     </div>
   </form>
 
@@ -68,10 +88,10 @@
     </div>
     <canvas id="timeline" data-only="explore"></canvas>
     <div id="cmp-bands" data-only="compare" hidden></div>
-    <div class="legend" data-only="explore">
+    <div class="legend expert" data-only="explore">
       <span class="sun">━ Sun elevation</span><span class="earth">━ Earth elevation</span>
-      <span class="hz">━ horizon under Sun</span><span class="hz">┅ horizon under Earth</span>
-      <span>bands: brightness = visible part of the disk</span>
+      <span class="hz">━ Horizon under Sun</span><span class="hz">┅ Horizon under Earth</span>
+      <span>Bands: brightness = visible disk fraction</span>
     </div>
   </section>
 
@@ -80,32 +100,47 @@
       <div class="panel sky-wrap">
         <div class="sky-head">
           <h2>Sky from the site</h2>
-          <label class="inline"><input type="checkbox" id="full-sky"> full sky (0–90°)</label>
+          <label class="inline expert"><input type="checkbox" id="full-sky"> Full sky (0–90°)</label>
         </div>
         <canvas id="sky"></canvas>
-        <p class="hint">Seen from above, north up. The scale is stretched around the Sun and Earth (centre = highest elevation they reach, rim = lowest terrain); grey is terrain, and ridges higher than the Sun ever gets fill towards the centre. Disks are to scale.</p>
+        <p class="hint expert">Zenith at centre, north up, east right. Radial scale auto-zooms to the Sun &amp; Earth elevation band; grey marks occluding LOLA terrain. Disks drawn to true angular scale.</p>
       </div>
       <div class="side">
+        <div class="panel" id="verdict" hidden></div>
+        <div class="panel" id="best-panel" hidden></div>
         <div class="panel" id="readout"></div>
         <div class="grid" id="metrics"></div>
       </div>
+    </div>
+    <div class="panel" id="pano-panel">
+      <div class="bp-head"><h2>360° Horizon Panorama</h2><small id="pano-read">hover to inspect azimuth &amp; ridge elevation</small></div>
+      <canvas id="pano" aria-label="360 degree horizon panorama"></canvas>
+      <p class="hint" id="pano-note"></p>
+    </div>
+    <div class="panel" id="slips" hidden>
+      <div class="bp-head"><h2>If the landing slips</h2><small id="slips-note"></small></div>
+      <table id="slips-table"></table>
+      <p class="hint">Same site and window duration across delayed launch dates. Deltas relative to planned date; ★ = best date for each metric.</p>
     </div>
   </section>
 
   <section id="compare" data-only="compare" hidden>
     <div class="cmp-cols" id="cmp-cols"></div>
     <div class="panel">
-      <h2>Side by side</h2>
+      <h2>Side-by-side comparison</h2>
       <table id="cmp-table"></table>
-      <p class="hint">★ = best of the compared sites for that metric.</p>
+      <p class="hint">★ = optimal site among compared candidates for that metric.</p>
     </div>
   </section>
 </main>
 
-<footer>Elevations relative to the local tangent plane of the 1737.4 km sphere; azimuth clockwise from north; times in UTC. Horizon: <span id="hz-source">—</span>.</footer>
+<footer>
+  <span>Elevations vs. local tangent plane of the 1737.4 km IAU sphere · Azimuth clockwise from North · UTC</span>
+  <span>Horizon model: <strong id="hz-source">—</strong></span>
+</footer>
 
-<script src="sky.js"></script>
-<script src="mock.js"></script>
-<script src="app.js"></script>
+<script src="sky.js?v=20261114k"></script>
+<script src="mock.js?v=20261114k"></script>
+<script src="app.js?v=20261114k"></script>
 </body>
 </html>

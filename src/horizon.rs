@@ -119,6 +119,22 @@ fn skyline(dems: &[Dem], site: &Site, ro: f64, min_step_m: f64, az: f64) -> f64 
 /// The observer stands `site.alt_m` (clamped to >= 0) above the DEM ground.
 /// Returns `None` when no product covers the site.
 pub fn from_dem(dems: &[Dem], site: &Site, n: usize) -> Option<HorizonMask> {
+    from_dem_threads(dems, site, n, cpu_threads())
+}
+
+/// Worker threads for CPU-bound loops.
+pub fn cpu_threads() -> usize {
+    std::thread::available_parallelism().map_or(4, |p| p.get().min(32))
+}
+
+/// [`from_dem`] with an explicit thread count (1 = on the calling thread, for callers
+/// that already parallelise over many sites).
+pub fn from_dem_threads(
+    dems: &[Dem],
+    site: &Site,
+    n: usize,
+    threads: usize,
+) -> Option<HorizonMask> {
     let (dem, ground) = dems
         .iter()
         .find_map(|d| d.height_m(site.lat_deg, site.lon_deg).map(|h| (d, h)))?;
@@ -128,18 +144,22 @@ pub fn from_dem(dems: &[Dem], site: &Site, n: usize) -> Option<HorizonMask> {
 
     // Azimuths are independent: split them across threads.
     let mut elev = vec![0.0; n];
-    let threads = std::thread::available_parallelism().map_or(4, |p| p.get().min(16));
-    let chunk = n.div_ceil(threads).max(1);
-    std::thread::scope(|scope| {
-        for (c, out) in elev.chunks_mut(chunk).enumerate() {
-            scope.spawn(move || {
-                for (k, e) in out.iter_mut().enumerate() {
-                    let az = ((c * chunk + k) as f64 * az_step).to_radians();
-                    *e = skyline(dems, site, ro, min_step, az);
-                }
-            });
+    let chunk = n.div_ceil(threads.max(1)).max(1);
+    let run = |c: usize, out: &mut [f64]| {
+        for (k, e) in out.iter_mut().enumerate() {
+            let az = ((c * chunk + k) as f64 * az_step).to_radians();
+            *e = skyline(dems, site, ro, min_step, az);
         }
-    });
+    };
+    if threads <= 1 {
+        run(0, &mut elev);
+    } else {
+        std::thread::scope(|scope| {
+            for (c, out) in elev.chunks_mut(chunk).enumerate() {
+                scope.spawn(move || run(c, out));
+            }
+        });
+    }
 
     Some(HorizonMask {
         az_step_deg: az_step,
@@ -176,6 +196,22 @@ fn terrain() -> &'static Terrain {
             cache: Mutex::new(HashMap::new()),
         }
     })
+}
+
+/// Uncached terrain mask from the loaded DEMs, computed on the calling thread; `None`
+/// outside them. For searches that parallelise over many nearby points and should not
+/// flood the per-site cache.
+pub fn terrain_mask(site: &Site) -> Option<HorizonMask> {
+    from_dem_threads(&terrain().dems, site, MASK_SAMPLES, 1)
+}
+
+/// Point `dist_m` metres from (`lat`, `lon`) along azimuth `az_deg` (clockwise from
+/// north) on the reference sphere. Returns (lat, lon) in degrees, lon in -180..180.
+pub fn move_by(lat: f64, lon: f64, az_deg: f64, dist_m: f64) -> (f64, f64) {
+    let (s, c) = lat.to_radians().sin_cos();
+    let theta = dist_m / (MOON_RADIUS_KM * 1000.0);
+    let (la, lo) = destination(s, c, lon, az_deg.to_radians(), theta);
+    (la, (lo + 180.0).rem_euclid(360.0) - 180.0)
 }
 
 /// Horizon for a site: LOLA terrain when a loaded DEM covers it, otherwise the smooth
@@ -293,6 +329,66 @@ mod tests {
         } else {
             Some(d)
         }
+    }
+
+    /// Opens one product, or skips the test when it is missing (as in CI).
+    fn product(name: &str) -> Option<Dem> {
+        Dem::open("data/raw/dem", name)
+            .map_err(|e| eprintln!("skipping: {e}"))
+            .ok()
+    }
+
+    /// Odysseus (-80.13, 1.44E) sits ~4 km inside the 40 m grid: northward rays must
+    /// continue in the 120 m product instead of stopping at the edge.
+    #[test]
+    fn rays_continue_past_the_80s_edge() {
+        let (Some(fine), Some(coarse)) = (product("ldem_80s_40m"), product("ldem_75s_120m")) else {
+            return;
+        };
+        let site = Site::new(-80.13, 1.44, 2.0).unwrap();
+        let only = from_dem(std::slice::from_ref(&fine), &site, MASK_SAMPLES).unwrap();
+        let both = [fine, coarse];
+        let chained = from_dem(&both, &site, MASK_SAMPLES).unwrap();
+        assert_eq!(chained.source, "lola:ldem_80s_40m");
+        assert_eq!(chained.ground_m, only.ground_m);
+        // Northward (az 315..45) rays leave the 40 m grid within a few km; with the
+        // 120 m product they see real terrain instead of the reference-sphere fallback.
+        let north: Vec<usize> = (0..MASK_SAMPLES)
+            .filter(|&i| {
+                let az = i as f64 * chained.az_step_deg;
+                !(45.0..=315.0).contains(&az)
+            })
+            .collect();
+        let changed = north
+            .iter()
+            .filter(|&&i| (chained.elev_deg[i] - only.elev_deg[i]).abs() > 0.01)
+            .count();
+        eprintln!(
+            "Odysseus: {changed}/{} northern azimuths changed by the 120 m product",
+            north.len()
+        );
+        assert!(changed > north.len() / 4, "only {changed} changed");
+        // Southward rays stay inside the 40 m grid: identical masks.
+        let south = (MASK_SAMPLES / 2 - 20)..(MASK_SAMPLES / 2 + 20);
+        assert!(
+            south
+                .into_iter()
+                .all(|i| (chained.elev_deg[i] - only.elev_deg[i]).abs() < 1e-9)
+        );
+    }
+
+    /// Between 75S and 80S only the 120 m product covers the site.
+    #[test]
+    fn sites_between_75s_and_80s_use_the_120m_product() {
+        let (Some(fine), Some(coarse)) = (product("ldem_80s_40m"), product("ldem_75s_120m")) else {
+            return;
+        };
+        let site = Site::new(-77.0, 0.0, 2.0).unwrap();
+        let m = from_dem(&[fine, coarse], &site, MASK_SAMPLES).unwrap();
+        eprintln!("-77,0: ground {:?} m, source {}", m.ground_m, m.source);
+        assert_eq!(m.source, "lola:ldem_75s_120m");
+        assert!(m.ground_m.is_some_and(f64::is_finite));
+        assert!(m.elev_deg.iter().all(|e| e.is_finite()));
     }
 
     /// From Shackleton's floor (~4 km deep, rim ~10 km away) the walls fill the sky

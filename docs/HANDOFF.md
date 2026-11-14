@@ -81,10 +81,11 @@ Pierwsza kompilacja trwa ok. 3–4 min (anise, nalgebra, axum). Zależności są
 | Research (8 sekcji) + `data/sites.json` (29 miejsc, 12 przy biegunie płd.) | ✅ ze zweryfikowanymi kluczowymi liczbami |
 | `src/ephem.rs`: Słońce/Ziemia az/el z ANISE | ✅ **zgodne z JPL Horizons do 0,001°** (test `matches_horizons_shackleton`) |
 | `src/horizon.rs`: horyzont sferyczny (z obniżeniem dla masztu), ułamek widocznej tarczy | ✅ testy |
+| Maska horyzontu z terenu | ✅ `horizon::from_dem` (720 az × 0,5°, ray-march z krzywizną, cache per miejsce), w `/api/track` (PR #10). Walidacja: Connecting Ridge (Gläser 2014) 91,1% vs 92% i 95,7% vs 95,6% czasu w świetle. Pierwsze zapytanie dla miejsca ~3,5 s |
 | `src/metrics.rs`: próbkowanie, okna Słońca i DTE, sunset/Earthset, najdłuższa noc | ✅ testy + sprawdzenie w przeglądarce |
 | `src/api.rs`: `/api/health`, `/api/sites`, `/api/track` | ✅ ręcznie: 400 dla złych danych, limit 20 000 punktów |
 | `web/index.html`: wybór miejsca, wykres elewacji, karty metryk, slip +1/+7/+30 d | ✅ działa (szkic UI) |
-| `src/dem.rs`: czytnik LOLA DEM | ✅ na `feat/terrain` (etykieta z `.lbl`, mmap, interpolacja dwuliniowa; orientacja: Shackleton = dołek 4 km, Malapert = szczyt 4,9 km). Maska horyzontu: następny krok, L2 |
+| `src/dem.rs`: czytnik LOLA DEM | ✅ na `main` (etykieta z `.lbl`, mmap, interpolacja dwuliniowa; orientacja: Shackleton = dołek 4 km, Malapert = szczyt 4,9 km). Maska horyzontu: następny krok, L2 |
 | Maska horyzontu z terenu | ❌ następny krok |
 
 Weryfikacja na żywo (14.11):
@@ -112,7 +113,13 @@ data/sites.json ─────────────────────�
 `GET /api/track?lat=&lon=&start=&days=30&step_min=60&alt_m=0&dte_margin_deg=0`
 - `start`: `2026-11-14`, `2026-11-14T06:30` lub `2026-11-14T06:30:00Z` (UTC).
 - limity: `step_min >= 1`, `0 < days <= 400`, max 20 000 punktów.
-- odpowiedź: `{ site, horizon: {az_step_deg, elev_deg[720], source}, summary: {...}, points: [{t, sun:{az_deg,el_deg,radius_deg,distance_km}, earth:{...}, sun_horizon_deg, earth_horizon_deg, sun_vis, earth_vis}] }`
+- odpowiedź: `{ site, horizon: {az_step_deg, elev_deg[720], source: "sphere" | "lola:<produkt>", ground_m?}, summary: {...}, points: [{t, sun:{az_deg,el_deg,radius_deg,distance_km}, earth:{...}, sun_horizon_deg, earth_horizon_deg, sun_vis, earth_vis}] }`
+`GET /api/best_nearby?lat=&lon=&start=&days=&step_min=[&alt_m][&radius_m=500][&grid_m=100]` → `{center, best, top[5], candidates_evaluated, radius_m, grid_m}`, kandydat: `{lat_deg, lon_deg, distance_m, ground_m, sun_visible_pct, sun_mean_fraction, earth_visible_pct, longest_night_hours}`; limity: promień ≤ 3000 m, siatka ≥ 40 m, ≤ 400 kandydatów; 400 poza DEM; ~15 s dla roku co 1 h (PR #13).
+
+- `summary` ma też `next_sunrise, next_earthrise, hours_to_sunrise, hours_to_earthrise` (pierwszy wschód po byciu pod horyzontem; null, gdy nie zachodzi) (PR #16).
+- `GET /api/compare?ids=0,5&sites=lat,lon;lat,lon&start=&days=&step_min=[&alt_m][&dte_margin_deg]` → `{entries: [{id, name, site, horizon_source, ground_m, summary}], rank_by_sun, rank_by_earth}`; do 6 miejsc, bez `points` (PR #16). Tryb dat: jedno miejsce + `starts=d1,d2` albo `start=…&offsets_days=0,1,7,30` (do 12); każdy wpis ma `start`, odpowiedź ma `mode` ("sites"/"dates") (PR #18).
+- `/api/track ... [&format=csv]` → CSV (`t_utc, sun_az_deg, sun_el_deg, sun_horizon_deg, sun_vis, earth_az_deg, earth_el_deg, earth_horizon_deg, earth_vis, sun_distance_km, earth_distance_km`), plik `track_<lat>_<lon>_<data>.csv`. Błędne parametry na wszystkich endpointach: 400 `{"error": ...}` (PR #27).
+- `horizon.ground_m`: wysokość terenu pod obserwatorem (m względem sfery 1737,4 km), tylko dla maski z terenu; obserwator stoi `alt_m` nad gruntem.
 - `summary`: `sun_mean_fraction, sun_visible_pct, earth_visible_pct, longest_night_hours, longest_dte_gap_hours, next_sunset, next_earthset, hours_to_sunset, hours_to_earthset, sunlight_windows[], dte_windows[]`.
 
 Konwencje: długość **wschodnia** −180..180; elewacja względem płaszczyzny stycznej do **sfery 1737,4 km** (jak Horizons); azymut od północy zgodnie z ruchem wskazówek zegara.
