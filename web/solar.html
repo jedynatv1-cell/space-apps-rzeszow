@@ -25,88 +25,75 @@
 </script>
 </head>
 <body>
-<!-- Top: collapsible time panel with date/time picker and a timeline. -->
-<header id="top">
-  <button id="top-toggle" aria-expanded="false" aria-controls="time-panel">
-    <span class="brand">Lunar Landing Site Navigator</span>
-    <span id="time-summary">—</span>
-    <span class="chev">▾</span>
-  </button>
-  <div id="time-panel" hidden>
-    <div class="time-row">
-      <label>Date (UTC) <input id="date" type="date"></label>
-      <label>Time (UTC) <input id="time" type="time" step="60"></label>
-      <button id="now">Now</button>
-      <span class="sep"></span>
-      <button id="play" aria-label="Play">▶</button>
-      <label>Speed
-        <select id="speed">
-          <option value="0.0002778">1 s / s (real time)</option>
-          <option value="0.0417">1 h / s</option>
-          <option value="1" selected>1 day / s</option>
-          <option value="7">1 week / s</option>
-          <option value="30">1 month / s</option>
-        </select>
-      </label>
-      <label>Timeline
-        <select id="span">
-          <option value="2">±1 day</option>
-          <option value="30" selected>±15 days</option>
-          <option value="365">±6 months</option>
-          <option value="730">±1 year</option>
-        </select>
-      </label>
-    </div>
-    <canvas id="timeline" aria-label="Timeline: drag to change time"></canvas>
-  </div>
-</header>
+<main id="view">
+  <div id="loading">Loading the Moon</div>
 
-<div id="layout">
-  <!-- Left: settings. -->
-  <aside id="left">
-    <button id="left-toggle" aria-label="Toggle settings panel">⟨</button>
+  <!-- Top: time control. Closed = a small tab with a down arrow; open = 3 buttons + date. -->
+  <div id="top" class="closed">
+    <div class="bar glass" id="bar">
+      <button class="icon" id="back" aria-label="Back one day" title="Back one day">
+        <svg viewBox="0 0 24 24"><path d="M11 6 5 12l6 6M19 6l-6 6 6 6"/></svg></button>
+      <button class="icon primary" id="play" aria-label="Play" title="Play / pause">
+        <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" class="fill"/></svg>
+        <svg class="i-pause" viewBox="0 0 24 24"><path d="M8 5h3v14H8zM13 5h3v14h-3z" class="fill"/></svg></button>
+      <button class="icon" id="fwd" aria-label="Forward one day" title="Forward one day">
+        <svg viewBox="0 0 24 24"><path d="m13 6 6 6-6 6M5 6l6 6-6 6"/></svg></button>
+      <span class="divider"></span>
+      <button id="date-btn" class="date" aria-expanded="false" aria-controls="picker">
+        <span id="date-main">—</span><span id="date-time">—</span>
+      </button>
+    </div>
+    <div id="picker" class="glass" aria-hidden="true">
+      <div class="picker-row">
+        <label><span>Date</span><input id="date" type="date"></label>
+        <label><span>Time UTC</span><input id="time" type="time" step="60"></label>
+        <button id="now" class="text">Now</button>
+      </div>
+    </div>
+    <button id="top-toggle" class="tab glass" aria-expanded="false" aria-label="Show time controls">
+      <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+  </div>
+
+  <!-- Left: translucent settings card. -->
+  <aside id="left" class="glass">
+    <button id="left-toggle" class="icon small" aria-expanded="true" aria-label="Hide settings">
+      <svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg>
+    </button>
     <div class="left-body">
-      <h2>Display</h2>
-      <fieldset>
-        <legend>Theme</legend>
-        <label class="radio"><input type="radio" name="theme" value="dark" checked> Dark</label>
-        <label class="radio"><input type="radio" name="theme" value="light"> Light</label>
-      </fieldset>
-      <fieldset>
-        <legend>Show</legend>
-        <label class="radio"><input type="checkbox" id="opt-sites" checked> Landing sites</label>
-        <label class="radio"><input type="checkbox" id="opt-labels" checked> Planet labels</label>
-        <label class="radio"><input type="checkbox" id="opt-trails" checked> Trails (365 days)</label>
-        <label class="radio"><input type="checkbox" id="opt-orbits" checked> Full orbits</label>
-        <label class="radio"><input type="checkbox" id="opt-shade" checked> Day / night on the Moon</label>
-      </fieldset>
-      <fieldset>
-        <legend>Camera</legend>
-        <div class="cam">
+      <h1>Lunar Navigator</h1>
+      <div class="group">
+        <div class="label">Theme</div>
+        <div class="seg" role="radiogroup" aria-label="Theme">
+          <button role="radio" data-theme-set="dark" aria-checked="true">Dark</button>
+          <button role="radio" data-theme-set="light" aria-checked="false">Light</button>
+        </div>
+      </div>
+      <div class="group">
+        <div class="label">Layers</div>
+        <label class="switch"><input type="checkbox" id="opt-sites" checked><i></i>Landing sites</label>
+        <label class="switch"><input type="checkbox" id="opt-labels" checked><i></i>Planet labels</label>
+        <label class="switch"><input type="checkbox" id="opt-trails" checked><i></i>Trails</label>
+        <label class="switch"><input type="checkbox" id="opt-orbits" checked><i></i>Orbits</label>
+        <label class="switch"><input type="checkbox" id="opt-shade" checked><i></i>Day and night</label>
+      </div>
+      <div class="group">
+        <div class="label">View</div>
+        <div class="chips">
           <button data-cam="moon">Moon</button>
           <button data-cam="earth">Earth–Moon</button>
-          <button data-cam="inner">Inner planets</button>
-          <button data-cam="all">Whole system</button>
+          <button data-cam="inner">Inner</button>
+          <button data-cam="all">System</button>
         </div>
-      </fieldset>
-      <p class="hint">Drag to orbit the Moon, scroll or pinch to zoom, click a marker for site details. Sizes and distances are to scale.</p>
-      <p class="hint"><a href="index.html">Site analysis (sky plot, compare) →</a></p>
-      <p class="credit">Moon: NASA SVS CGI Moon Kit (LRO LROC WAC colour, LOLA elevation). Planet positions: JPL approximate elements; Moon: Meeus.</p>
+      </div>
+      <a class="link" href="index.html">Site analysis</a>
+      <p class="credit">Moon imagery: NASA SVS CGI Moon Kit (LRO LROC, LOLA)</p>
     </div>
   </aside>
 
-  <main id="view">
-    <div id="loading">Loading Moon textures…</div>
-    <div id="hud"><span id="dist"></span></div>
-    <div id="popup" hidden role="dialog" aria-labelledby="popup-title"></div>
-  </main>
-</div>
-
-<!-- Bottom panel: visible by default, content comes later. -->
-<section id="bottom">
-  <button id="bottom-toggle" aria-expanded="true" aria-controls="bottom-body">▾ Panel</button>
-  <div id="bottom-body"><p class="placeholder">Reserved for upcoming tools.</p></div>
-</section>
+  <!-- Site card: shown above the hovered marker, expands on click. -->
+  <div id="card" class="glass" role="dialog" aria-live="polite" hidden></div>
+</main>
 
 <script type="module" src="solar/main.js"></script>
 </body>
