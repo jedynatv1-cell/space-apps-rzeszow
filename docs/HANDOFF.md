@@ -118,6 +118,7 @@ data/sites.json ─────────────────────�
 
 - `summary` ma też `next_sunrise, next_earthrise, hours_to_sunrise, hours_to_earthrise` (pierwszy wschód po byciu pod horyzontem; null, gdy nie zachodzi) (PR #16).
 - `GET /api/compare?ids=0,5&sites=lat,lon;lat,lon&start=&days=&step_min=[&alt_m][&dte_margin_deg]` → `{entries: [{id, name, site, horizon_source, ground_m, summary}], rank_by_sun, rank_by_earth}`; do 6 miejsc, bez `points` (PR #16). Tryb dat: jedno miejsce + `starts=d1,d2` albo `start=…&offsets_days=0,1,7,30` (do 12); każdy wpis ma `start`, odpowiedź ma `mode` ("sites"/"dates") (PR #18).
+- `/api/track ... [&format=csv]` → CSV (`t_utc, sun_az_deg, sun_el_deg, sun_horizon_deg, sun_vis, earth_az_deg, earth_el_deg, earth_horizon_deg, earth_vis, sun_distance_km, earth_distance_km`), plik `track_<lat>_<lon>_<data>.csv`. Błędne parametry na wszystkich endpointach: 400 `{"error": ...}` (PR #27).
 - `horizon.ground_m`: wysokość terenu pod obserwatorem (m względem sfery 1737,4 km), tylko dla maski z terenu; obserwator stoi `alt_m` nad gruntem.
 - `summary`: `sun_mean_fraction, sun_visible_pct, earth_visible_pct, longest_night_hours, longest_dte_gap_hours, next_sunset, next_earthset, hours_to_sunset, hours_to_earthset, sunlight_windows[], dte_windows[]`.
 
