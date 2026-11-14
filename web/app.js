@@ -134,6 +134,7 @@ async function run() {
       const data = await api(trackQuery($('lat').value, $('lon').value));
       if (req !== state.req) return;
       state.data = data;
+      loadSlips(req);
     } else {
       const picks = [...document.querySelectorAll('.cmp-site')].map(s => s.value).filter(v => v !== '');
       const uniq = [...new Set(picks)].map(i => state.sites[+i]);
@@ -235,6 +236,62 @@ const METRICS = [
   { label: 'From start: Earth', key: s => earthEvt(s).h, better: null, show: s => { const e = earthEvt(s); return e.h == null ? '—' : `${e.w} ${fmtDur(e.h)}`; }, note: s => { const e = earthEvt(s); return e.t ? fmtTime(e.t) : 'no change in window'; } },
   { label: 'Sunlight windows', key: s => s.sunlight_windows.length, better: null, show: s => String(s.sunlight_windows.length), note: s => `longest ${fmt(Math.max(0, ...s.sunlight_windows.map(w => w.hours)), 0, ' h')}` },
 ];
+
+// ---------- launch slips (GET /api/compare, dates mode) ----------
+
+const SLIP_OFFSETS = [0, 1, 7, 30];
+
+async function loadSlips(req) {
+  const panel = $('slips');
+  if (state.demo || state.recorded) { panel.hidden = true; return; }
+  const q = new URLSearchParams({ sites: `${$('lat').value},${$('lon').value}`, start: $('start').value,
+    days: $('days').value, step_min: $('step').value, offsets_days: SLIP_OFFSETS.join(',') });
+  try {
+    const r = await api('/api/compare?' + q);
+    if (req !== state.req) return;
+    renderSlips(r);
+  } catch {
+    panel.hidden = true; // optional panel: the main view already shows any error
+  }
+}
+
+function renderSlips(r) {
+  const es = r.entries;
+  if (!es || es.length < 2) { $('slips').hidden = true; return; }
+  const base = es[0].summary;
+  const cols = [
+    ['Sun visible', s => s.sun_visible_pct, v => fmt(v, 1, '%'), 1, 'pts'],
+    ['Mean solar disk', s => s.sun_mean_fraction * 100, v => fmt(v, 1, '%'), 1, 'pts'],
+    ['Earth visible', s => s.earth_visible_pct, v => fmt(v, 1, '%'), 1, 'pts'],
+    ['Longest night', s => s.longest_night_hours, v => fmt(v, 0, ' h'), -1, 'h'],
+    ['Longest DTE gap', s => s.longest_dte_gap_hours, v => fmt(v, 0, ' h'), -1, 'h'],
+  ];
+  const best = cols.map(([, f, , dir]) => { const v = es.map(e => f(e.summary)); return dir > 0 ? Math.max(...v) : Math.min(...v); });
+  const head = `<tr><th>Landing</th>${cols.map(c => `<th>${c[0]}</th>`).join('')}<th>First event</th><th></th></tr>`;
+  const rows = es.map((e, k) => {
+    const s = e.summary, off = SLIP_OFFSETS[k];
+    const label = `${off ? `+${off} d` : 'Planned'}<small>${fmtTime(e.start).replace(/ 00 UTC$| UTC$/, '')}</small>`;
+    const cells = cols.map(([, f, show, dir, unit], j) => {
+      const v = f(s), d = v - f(base), isBest = v === best[j] && new Set(es.map(x => f(x.summary))).size > 1;
+      const cls = k && Math.abs(d) > 0.05 ? ((d > 0) === (dir > 0) ? 'up' : 'down') : '';
+      const bar = j === 0 ? `<span class="bar" style="width:${Math.round(v * 0.6)}px"></span>` : '';
+      const delta = k ? `<small>${d > 0 ? '+' : ''}${fmt(d, unit === 'h' ? 0 : 1)} ${unit}</small>` : '';
+      return `<td class="${cls}">${bar}${show(v)}${isBest ? ' ★' : ''}${delta}</td>`;
+    }).join('');
+    const ev = sunEvt(s);
+    const evTxt = ev.h == null ? '—' : `${ev.w} in ${fmtDur(ev.h)}`;
+    return `<tr class="${k ? '' : 'on'}"><td>${label}</td>${cells}<td>${evTxt}</td>` +
+      `<td>${k ? `<button type="button" class="secondary" data-start="${e.start}">View</button>` : ''}</td></tr>`;
+  }).join('');
+  $('slips-table').innerHTML = head + rows;
+  $('slips-note').textContent = `${$('days').value}-day window from each date`;
+  $('slips').hidden = false;
+  $('slips-table').querySelectorAll('[data-start]').forEach(b => (b.onclick = () => {
+    $('start').value = b.dataset.start.slice(0, 16);
+    run();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }));
+}
 
 // ---------- best spot nearby (GET /api/best_nearby) ----------
 
