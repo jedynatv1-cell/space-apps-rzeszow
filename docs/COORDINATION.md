@@ -161,6 +161,7 @@ Potem otwórz w tym folderze Claude Code i wpisz **`/setup-laptop`**. Skill zapy
 
 | Kiedy | Kto | Co | Wpływ na innych |
 |---|---|---|---|
+| sob 14.11 | L4 (W4) | Nowy `docs/VALIDATION.md`: efemerydy zgodne z Horizons ≤ 0,0001° (6 miejsc), budżet błędu horyzontu DEM 40 m, wartości referencyjne oświetlenia (Bussey 2010, Gläser 2014), błąd proxy Artemis, efekty pomijane, tabela do pitchu (EN) | **L2:** po masce horyzontu uruchom 8 zapytań z §3 (albo L1); sprawdź, czy zaćmienia są modelowane. **L5:** tabela §6 do slajdu Validity |
 | sob 14.11 ~14:30 | L3 (Claude) | Widok 3D `web/solar.html` (stretch, osobny PR z `feat/ui-3d`): Księżyc w centrum, tekstury NASA SVS 4720 (LROC + LOLA), Układ Słoneczny w skali, ślady 365 dni, klikalne miejsca lądowania, panel czasu u góry, motyw jasny/ciemny | Nie blokuje PR #1. Daty lądowań tymczasowo w `web/solar/landing-dates.js` (docelowo pole w `sites.json`, L4) |
 | sob 14.11 ~13:40 | L3 (Claude, nie Antigravity) | W3 frontend: polarny sky-plot (horyzont, Słońce, Ziemia w skali), oś czasu z odtwarzaniem, porównanie 2–3 miejsc; tryb demo bez serwera (`?demo=1`) | L3 potrzebuje IP L1; adres serwera ustawia się w UI (Server) lub `?api=http://<IP-L1>:3000`. Kontrakt API bez zmian |
 | sob 14.11 | L4 (W4) | `sites.json`: rozsunięte pary Mons Mouton / Mons Mouton Plateau i Nobile Rim 1 / 2 (nadal proxy, źródła w `coord_note`); `SUBMISSION.md`: szkic tekstów strony projektu (EN) | L2/L3: inne wyniki dla tych 4 regionów; zespół: uzupełnić `[[...]]` w tekstach |
