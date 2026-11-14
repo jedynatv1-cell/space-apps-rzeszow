@@ -4,13 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lunar Landing Site Navigator</title>
-<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="app.css?v=20261114c">
 </head>
 <body>
 <header>
   <div>
     <h1>Lunar Landing Site Navigator</h1>
     <p>Sun &amp; Earth above the local horizon at lunar landing sites: solar power and direct-to-Earth windows. <a href="solar.html" style="color:#4ea1ff">3D Moon &amp; Solar System →</a></p>
+  </div>
+  <div class="mode" role="radiogroup" aria-label="Detail level">
+    <button type="button" role="radio" data-mode="public" title="Plain-language summary: countdowns, sunlight and Earth contact">Public</button>
+    <button type="button" role="radio" data-mode="expert" title="Everything: coordinates, azimuth/elevation, terrain angles, link gaps">Expert</button>
   </div>
   <details id="server">
     <summary>Server: <span id="server-label">…</span></summary>
@@ -33,8 +37,8 @@
     </nav>
     <div class="row" data-only="explore">
       <label>Site <select id="site"></select></label>
-      <label>Lat° <input id="lat" type="number" step="0.001" value="-89.45" class="num"></label>
-      <label>Lon° (E) <input id="lon" type="number" step="0.001" value="-129.78" class="num"></label>
+      <label class="expert">Lat° <input id="lat" type="number" step="0.001" value="-89.45" class="num"></label>
+      <label class="expert">Lon° (E) <input id="lon" type="number" step="0.001" value="-129.78" class="num"></label>
       <button type="button" id="best" class="secondary" title="Search a 500 m radius (100 m grid) for the spot with the most sunlight">Best spot within 500 m</button>
     </div>
     <div class="row" data-only="compare" hidden>
@@ -45,7 +49,7 @@
     <div class="row">
       <label>Start (UTC) <input id="start" type="datetime-local" value="2026-11-14T00:00"></label>
       <label>Days <input id="days" type="number" min="1" max="400" value="30" class="num"></label>
-      <label>Step (min) <input id="step" type="number" min="1" value="60" class="num"></label>
+      <label class="expert">Step (min) <input id="step" type="number" min="1" value="60" class="num"></label>
       <button type="submit">Compute</button>
       <span class="slips">Shift: <button type="button" data-d="-7">−7 d</button><button type="button" data-d="-1">−1 d</button><button type="button" data-d="1">+1 d</button><button type="button" data-d="7">+7 d</button></span>
     </div>
@@ -69,7 +73,7 @@
     </div>
     <canvas id="timeline" data-only="explore"></canvas>
     <div id="cmp-bands" data-only="compare" hidden></div>
-    <div class="legend" data-only="explore">
+    <div class="legend expert" data-only="explore">
       <span class="sun">━ Sun elevation</span><span class="earth">━ Earth elevation</span>
       <span class="hz">━ horizon under Sun</span><span class="hz">┅ horizon under Earth</span>
       <span>bands: brightness = visible part of the disk</span>
@@ -81,12 +85,13 @@
       <div class="panel sky-wrap">
         <div class="sky-head">
           <h2>Sky from the site</h2>
-          <label class="inline"><input type="checkbox" id="full-sky"> full sky (0–90°)</label>
+          <label class="inline expert"><input type="checkbox" id="full-sky"> full sky (0–90°)</label>
         </div>
         <canvas id="sky"></canvas>
-        <p class="hint">Seen from above, north up. The scale is stretched around the Sun and Earth (centre = highest elevation they reach, rim = lowest terrain); grey is terrain, and ridges higher than the Sun ever gets fill towards the centre. Disks are to scale.</p>
+        <p class="hint expert">Seen from above, north up. The scale is stretched around the Sun and Earth (centre = highest elevation they reach, rim = lowest terrain); grey is terrain, and ridges higher than the Sun ever gets fill towards the centre. Disks are to scale.</p>
       </div>
       <div class="side">
+        <div class="panel" id="verdict" hidden></div>
         <div class="panel" id="best-panel" hidden></div>
         <div class="panel" id="readout"></div>
         <div class="grid" id="metrics"></div>
@@ -111,8 +116,8 @@
 
 <footer>Elevations relative to the local tangent plane of the 1737.4 km sphere; azimuth clockwise from north; times in UTC. Horizon: <span id="hz-source">—</span>.</footer>
 
-<script src="sky.js"></script>
-<script src="mock.js"></script>
-<script src="app.js"></script>
+<script src="sky.js?v=20261114c"></script>
+<script src="mock.js?v=20261114c"></script>
+<script src="app.js?v=20261114c"></script>
 </body>
 </html>
