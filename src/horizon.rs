@@ -119,6 +119,22 @@ fn skyline(dems: &[Dem], site: &Site, ro: f64, min_step_m: f64, az: f64) -> f64 
 /// The observer stands `site.alt_m` (clamped to >= 0) above the DEM ground.
 /// Returns `None` when no product covers the site.
 pub fn from_dem(dems: &[Dem], site: &Site, n: usize) -> Option<HorizonMask> {
+    from_dem_threads(dems, site, n, cpu_threads())
+}
+
+/// Worker threads for CPU-bound loops.
+pub fn cpu_threads() -> usize {
+    std::thread::available_parallelism().map_or(4, |p| p.get().min(32))
+}
+
+/// [`from_dem`] with an explicit thread count (1 = on the calling thread, for callers
+/// that already parallelise over many sites).
+pub fn from_dem_threads(
+    dems: &[Dem],
+    site: &Site,
+    n: usize,
+    threads: usize,
+) -> Option<HorizonMask> {
     let (dem, ground) = dems
         .iter()
         .find_map(|d| d.height_m(site.lat_deg, site.lon_deg).map(|h| (d, h)))?;
@@ -128,18 +144,22 @@ pub fn from_dem(dems: &[Dem], site: &Site, n: usize) -> Option<HorizonMask> {
 
     // Azimuths are independent: split them across threads.
     let mut elev = vec![0.0; n];
-    let threads = std::thread::available_parallelism().map_or(4, |p| p.get().min(16));
-    let chunk = n.div_ceil(threads).max(1);
-    std::thread::scope(|scope| {
-        for (c, out) in elev.chunks_mut(chunk).enumerate() {
-            scope.spawn(move || {
-                for (k, e) in out.iter_mut().enumerate() {
-                    let az = ((c * chunk + k) as f64 * az_step).to_radians();
-                    *e = skyline(dems, site, ro, min_step, az);
-                }
-            });
+    let chunk = n.div_ceil(threads.max(1)).max(1);
+    let run = |c: usize, out: &mut [f64]| {
+        for (k, e) in out.iter_mut().enumerate() {
+            let az = ((c * chunk + k) as f64 * az_step).to_radians();
+            *e = skyline(dems, site, ro, min_step, az);
         }
-    });
+    };
+    if threads <= 1 {
+        run(0, &mut elev);
+    } else {
+        std::thread::scope(|scope| {
+            for (c, out) in elev.chunks_mut(chunk).enumerate() {
+                scope.spawn(move || run(c, out));
+            }
+        });
+    }
 
     Some(HorizonMask {
         az_step_deg: az_step,
@@ -178,10 +198,11 @@ fn terrain() -> &'static Terrain {
     })
 }
 
-/// Uncached terrain mask from the loaded DEMs, `None` outside them (for searches over
-/// many nearby points that should not flood the per-site cache).
+/// Uncached terrain mask from the loaded DEMs, computed on the calling thread; `None`
+/// outside them. For searches that parallelise over many nearby points and should not
+/// flood the per-site cache.
 pub fn terrain_mask(site: &Site) -> Option<HorizonMask> {
-    from_dem(&terrain().dems, site, MASK_SAMPLES)
+    from_dem_threads(&terrain().dems, site, MASK_SAMPLES, 1)
 }
 
 /// Point `dist_m` metres from (`lat`, `lon`) along azimuth `az_deg` (clockwise from
