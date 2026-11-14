@@ -206,6 +206,7 @@ async function run() {
     state.idx = Math.min(state.idx, Math.max(0, n - 1));
     $('scrub').max = Math.max(0, n - 1);
     render();
+    requestAnimationFrame(render); // again once layout has settled (first paint can see 0-px canvases)
   } catch (e) {
     if (req === state.req) $('err').textContent = e.message;
   } finally {
@@ -454,11 +455,11 @@ function renderCompare(i) {
   if (cols.dataset.for !== key) {
     cols.dataset.for = key;
     cols.innerHTML = state.cmp.map((c, k) => `<div class="panel cmp-col">
-        <h3>${esc(c.site.name)}</h3>
+        <h3>${esc(siteLabel(c.site))}</h3>
         <div class="sub">${esc(shortMission(c.site))} · ${fmt(c.site.lat_deg, 3)}°, ${fmt(c.site.lon_deg, 3)}°E</div>
         <canvas data-k="${k}"></canvas><div class="now"></div></div>`).join('');
     bands.innerHTML = state.cmp.map((c, k) =>
-      `<div class="cmp-band"><span title="${esc(c.site.name)}">${esc(c.site.name)}</span><canvas data-k="${k}"></canvas></div>`).join('');
+      `<div class="cmp-band"><span title="${esc(c.site.name)}">${esc(siteLabel(c.site))}</span><canvas data-k="${k}"></canvas></div>`).join('');
     bands.querySelectorAll('canvas').forEach(attachScrub);
     renderCmpTable();
   }
@@ -478,7 +479,7 @@ function renderCompare(i) {
 }
 
 function renderCmpTable() {
-  const head = '<tr><th></th>' + state.cmp.map(c => `<th>${esc(c.site.name)}</th>`).join('') + '</tr>';
+  const head = '<tr><th></th>' + state.cmp.map(c => `<th>${esc(siteLabel(c.site))}</th>`).join('') + '</tr>';
   const rows = METRICS.map(m => {
     const vals = state.cmp.map(c => m.key(c.data.summary));
     const valid = vals.filter(v => v != null && !Number.isNaN(v));

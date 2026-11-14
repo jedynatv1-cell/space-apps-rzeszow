@@ -75,6 +75,9 @@ function drawSky(canvas, data, idx, opts = {}) {
   const compact = !!opts.compact;
   const margin = compact ? 16 : 24;
   const R = Math.min(w, h) / 2 - margin, cx = w / 2, cy = h / 2;
+  // Before layout settles the canvas can be 0 px wide: R < 0 makes createRadialGradient throw and
+  // aborts the whole render. Skip this frame; the page redraws on resize and on the next update.
+  if (!(R > 4)) return range;
   const span = range.hi - range.lo;
   const clampEl = el => Math.max(range.lo, Math.min(range.hi, el));
   const rOf = el => R * (range.hi - clampEl(el)) / span;
@@ -288,6 +291,7 @@ function drawPanorama(canvas, data, idx) {
   const lo = Math.max(-10, Math.floor(Math.min(tMin, -1)) - 0.5), hi = Math.min(90, Math.ceil(Math.max(tMax, bMax)) + 1);
   const W = w - left - right, H = h - top - bottom;
   const xs = W / 360, ys = H / (hi - lo);
+  if (!(W > 10 && H > 10)) return { left, W: Math.max(W, 1), xs: Math.max(xs, 1e-3), ys, exaggeration: 1 }; // not laid out yet
   const x = az => left + (((az % 360) + 360) % 360) * xs;
   const y = el => top + (hi - el) * ys;
 
