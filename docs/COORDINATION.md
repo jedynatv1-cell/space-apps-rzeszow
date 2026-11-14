@@ -21,7 +21,7 @@
 | **L1** | 💪 mocny | **CORE = KOORDYNATOR**: centrala komunikacji botów (wiadomości, Dziennik, aktualność dokumentów), przydział pracy, merge PR-ów, serwer. **Nie pisze kodu funkcji.** | Claude (koordynator) | `main` + krótkie gałęzie `chore/*` |
 | **L2** | 💪 mocny | **W1** teren: czytnik LOLA DEM (✅ gotowy na `feat/terrain`), maska horyzontu + **W2** metryki i API: earthrise, `/api/compare`, walidacja PGDA | Claude (ciężko) | `feat/terrain`, `feat/metrics` |
 | **L3** | 🪶 słaby | **W3** frontend: sky-plot, panorama, porównanie obok siebie | Antigravity | `feat/ui` |
-| **L4** | 🪶 słaby | **W4** treści: `sites.json` (rozsunięcie regionów Artemis przez Quickmap), teksty strony projektu (EN), tabela walidacji | Claude (lekko, okazjonalnie) | `feat/content` |
+| **L4** | 🪶 słaby | **W4 research + dokładność**: jak dokładne są nasze liczby (efemerydy vs JPL Horizons, horyzont/oświetlenie vs mapy PGDA, błąd od rozdzielczości DEM i współrzędnych proxy), tabela walidacji do pitchu (`docs/VALIDATION.md`), `sites.json`, teksty strony projektu (EN) | Claude (średnio) | `feat/content` |
 | **L5** | 🪶 słaby | **QA**: testy na serwerze L1, zgłaszanie błędów, linki w trybie incognito + **W5** w sobotę: szkic slajdów i skryptu nagrania | Claude (lekko) / człowiek | `feat/demo` |
 | **L6** *(od niedzieli)* | 💪 mocny | **W5** media: skrypt nagrywający, DaVinci, 7 slajdów, pitch | Claude (skrypt) | `feat/demo` |
 | **R1** komputer zdalny (Google Remote Desktop) | 💪 zajęty | **NIE w projekcie.** Trenuje model PPO w osobnej sesji Claude („Sieć neuronowa do przewidywania…”). Nie klonujemy tu repo i nie wysyłamy wiadomości. | — | — |
