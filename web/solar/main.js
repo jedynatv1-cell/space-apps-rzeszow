@@ -16,7 +16,7 @@ const TRAIL_DAYS = 365, TRAIL_N = 366;
 const state = {
   t: Date.now(),
   playing: false,
-  theme: localStorage.getItem('navTheme') || 'dark',
+  theme: 'dark',
 };
 
 // ---------- renderer, camera, controls ----------
@@ -321,6 +321,25 @@ function updateOrbits(d) {
 // ---------- landing sites ----------
 
 const siteMarkers = [];
+
+// CPU copy of the packed LOLA height map (R = high byte, G = low byte, half-metres + 20000).
+let heightPx = null, heightW = 0, heightH = 0;
+async function loadHeights() {
+  const img = new Image();
+  img.src = ASSET + 'moon_height_rg.png';
+  await img.decode();
+  const c = document.createElement('canvas'); c.width = heightW = img.width; c.height = heightH = img.height;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0);
+  heightPx = g.getImageData(0, 0, heightW, heightH).data;
+}
+function heightKm(lat, lon) {
+  if (!heightPx) return 0;
+  const x = Math.min(heightW - 1, Math.floor((lon + 180) / 360 * heightW));
+  const y = Math.min(heightH - 1, Math.floor((90 - lat) / 180 * heightH));
+  const k = (y * heightW + x) * 4;
+  return ((heightPx[k] * 256 + heightPx[k + 1]) - 20000) * 0.5 / 1000;
+}
 async function loadSites() {
   const tries = ['/api/sites'];
   const saved = localStorage.getItem('navApi');
@@ -332,11 +351,11 @@ async function loadSites() {
   return [];
 }
 
-const STATUS = {
-  landed: ['landed', 'Landed'], crashed: ['lost', 'Lost on landing'],
-  planned: ['planned', 'Planned'], candidate_region: ['planned', 'Candidate region'],
+const STATUS = { // [css class, label, left-panel category]
+  landed: ['landed', 'Landed', 'hist'], crashed: ['lost', 'Lost on landing', 'hist'],
+  planned: ['planned', 'Planned mission', 'planned'], candidate_region: ['cand', 'Candidate region', 'cand'],
 };
-const statusOf = s => STATUS[s.status] || ['landed', s.status || ''];
+const statusOf = s => STATUS[s.status] || ['landed', s.status || '', 'hist'];
 
 function addSites(sites) {
   for (const s of sites) {
@@ -345,20 +364,26 @@ function addSites(sites) {
     const el = document.createElement('div');
     el.className = `site ${statusOf(s)[0]}`;
     el.setAttribute('aria-label', s.name);
+    el.innerHTML = '<i></i>';
     const obj = new CSS2DObject(el);
-    obj.position.copy(n).multiplyScalar(MOON_R + 2);
+    // Sit on the real (LOLA) surface, not the bare sphere: polar sites are up to ~5 km above it.
+    obj.position.copy(n).multiplyScalar(MOON_R + heightKm(s.lat_deg, s.lon_deg) + 0.3);
     moonFrame.add(obj);
-    const m = { site: s, obj, el, normal: n };
-    el.addEventListener('pointerdown', e => e.stopPropagation());
+    const m = { site: s, obj, el, normal: n, cat: statusOf(s)[2] };
     el.addEventListener('pointerenter', () => { if (!card.pinned) showCard(m); cancelHide(); });
     el.addEventListener('pointerleave', () => scheduleHide());
-    el.addEventListener('click', e => {
+    // Pin on pointerdown, not click: markers are repositioned every frame, and if one shifts a pixel
+    // between press and release the browser sends the click to a parent instead.
+    el.addEventListener('pointerdown', e => {
       e.stopPropagation();
       if (card.m === m && card.pinned) { hideCard(true); return; }
       showCard(m); card.pinned = true; $('card').classList.add('open');
     });
+    el.addEventListener('click', e => e.stopPropagation());
     siteMarkers.push(m);
   }
+  for (const c of ['hist', 'planned', 'cand']) $('n-' + c).textContent = siteMarkers.filter(m => m.cat === c).length;
+  $('site-note').textContent = `${siteMarkers.length} sites. Markers on the far side of the Moon are hidden; turn the Moon to see them.`;
 }
 
 // One floating card, positioned above the hovered or pinned marker every frame.
@@ -389,7 +414,7 @@ function showCard(m) {
       <div class="more"><div>
         ${info.text ? `<p>${esc(info.text)}</p>` : ''}
         ${s.coord_note ? `<p>${esc(s.coord_note)}</p>` : ''}
-        <div class="actions"><button class="text" data-fly>Fly to site</button></div>
+        <div class="actions"><button class="text" data-fly>Fly to site</button><a class="text" href="index.html?lat=${s.lat_deg}&lon=${s.lon_deg}">Horizon →</a></div>
       </div></div>
       <div class="hint">Click for details</div>`;
     c.querySelector('[data-fly]').onclick = e => {
@@ -472,6 +497,14 @@ function updateScene() {
     mo.setXYZ(i, em[0] + g[0], em[1] + g[1], em[2] + g[2]);
   }
   mo.needsUpdate = true;
+  // The orbit starts and ends at the Moon (origin); skip the stretch inside ~4 Moon radii so the
+  // line does not cut across the Moon's face.
+  let a = 0, b = MOON_ORBIT_N - 1;
+  const r2 = (16 * MOON_R * MOON_R);
+  const d2 = k => mo.getX(k) ** 2 + mo.getY(k) ** 2 + mo.getZ(k) ** 2;
+  while (a < b && d2(a) < r2) a++;
+  while (b > a && d2(b) < r2) b--;
+  moonOrbit.geometry.setDrawRange(a, b - a + 1);
 
   if (lastTrailT === null || Math.abs(state.t - lastTrailT) > 36e5) { updateTrails(d); lastTrailT = state.t; }
   updateOrbits(d);
@@ -481,11 +514,13 @@ function updateMarkers() {
   const rot = new THREE.Matrix4().extractRotation(moonFrame.matrix);
   const camDir = camera.position.clone();
   const dist = camera.position.length();
-  const show = $('opt-sites').checked && dist < MOON_R * 40;
+  const near = dist < MOON_R * 40;
+  const cats = { hist: $('cat-hist').checked, planned: $('cat-planned').checked, cand: $('cat-cand').checked };
   for (const m of siteMarkers) {
     const wn = m.normal.clone().applyMatrix4(rot);
     const p = wn.clone().multiplyScalar(MOON_R);
-    m.obj.visible = show && wn.dot(camDir.clone().sub(p)) > 0; // hide sites on the far side
+    const toCam = camDir.clone().sub(p).normalize();
+    m.obj.visible = near && cats[m.cat] && wn.dot(toCam) > 0.06; // far side and grazing limb hidden
   }
   if (card.m && !card.m.obj.visible) hideCard(true);
   const labelsOn = $('opt-labels').checked;
@@ -559,15 +594,12 @@ function togglePicker(force) {
 function applyTheme(theme) {
   state.theme = theme;
   document.documentElement.dataset.theme = theme;
-  localStorage.setItem('navTheme', theme);
   scene.background = new THREE.Color(theme === 'light' ? 0xdde2ea : 0x02030a);
   const orbitCol = theme === 'light' ? 0x6b7486 : 0x7a8396;
   Object.values(orbitLines).forEach(l => l.material.color.setHex(orbitCol));
-  document.querySelectorAll('[data-theme-set]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.themeSet === theme)));
 }
 
 function wirePanels() {
-  document.querySelectorAll('[data-theme-set]').forEach(b => (b.onclick = () => applyTheme(b.dataset.themeSet)));
   $('left-toggle').onclick = () => {
     const collapsed = $('left').classList.toggle('collapsed');
     $('left-toggle').setAttribute('aria-expanded', String(!collapsed));
@@ -616,6 +648,7 @@ updateScene();
 applyTheme(state.theme);
 wireTime();
 wirePanels();
+if (window.innerWidth < 600) $('left-toggle').click(); // small screens: start with the settings tucked away
 resize();
 // Initial view: close to the Moon, looking at the south pole with Earth's direction in mind.
 {
@@ -625,4 +658,4 @@ resize();
 syncTime();
 requestAnimationFrame(frame);
 loadMoon().catch(e => { $('loading').textContent = `Could not load Moon textures: ${e.message || e}`; });
-loadSites().then(addSites);
+Promise.all([loadSites(), loadHeights().catch(() => null)]).then(([sites]) => addSites(sites));
