@@ -41,7 +41,7 @@
 | L1 | … | `laptop-l?` | … | ✅ wymagane | ✅ | jedyny serwer, integrator |
 | L2 | … | `laptop-l?` | … | opcjonalnie | ✅ | własny serwer testowy na `PORT=3001` |
 | L3 | … | `laptop-l?` | … | ❌ | — (Antigravity) | frontend → `http://<L1>:3000` |
-| L4 | … | `laptop-l?` | … | ❌ | ✅ | |
+| L4 | … | `laptop-l?` | Windows 10 | ❌ | ✅ | treści (W4), gałąź `feat/content` |
 | L5 | … | `laptop-l?` | … | ❌ | ✅ (podgląd sesji L1/L2) | |
 | L6 | … | `laptop-l?` | … | opcjonalnie | ✅ | od niedzieli |
 | R1 | — | — | … | ❌ | ❌ | zajęty treningiem PPO, poza projektem |
@@ -156,6 +156,7 @@ Potem otwórz w tym folderze Claude Code i wpisz **`/setup-laptop`**. Skill zapy
 
 | Kiedy | Kto | Co | Wpływ na innych |
 |---|---|---|---|
+| sob 14.11 | L4 (W4) | `sites.json`: rozsunięte pary Mons Mouton / Mons Mouton Plateau i Nobile Rim 1 / 2 (nadal proxy, źródła w `coord_note`); `SUBMISSION.md`: szkic tekstów strony projektu (EN) | L2/L3: inne wyniki dla tych 4 regionów; zespół: uzupełnić `[[...]]` w tekstach |
 | sob 14.11 ~11:45 | Claude (koordynator) | Role per laptop, hooki, skille, plan (ten plik) | Każdy PC: clone + `/setup-laptop` |
 | sob 14.11 ~11:20 | Claude (czat 0) | Lista urządzeń + Tailscale | Uzupełnić tabelę urządzeń; jeden laptop = serwer |
 | sob 14.11 ~10:30 | Claude (czat 0) | Szkielet + dokumentacja, CI zielone, DEM pobrane | Start: każdy bierze swoją gałąź |
