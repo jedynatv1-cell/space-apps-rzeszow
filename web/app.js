@@ -114,8 +114,11 @@ function trackQuery(lat, lon) {
   });
 }
 
-function setBusy(on) {
+const BUSY_DEFAULT = 'Computing… the first request for a site loads its terrain and can take a few seconds.';
+function setBusy(on, msg = BUSY_DEFAULT) {
   $('busy').hidden = !on;
+  $('busy').lastChild.textContent = ' ' + msg;
+  $('best').disabled = on;
   document.querySelector('main').classList.toggle('loading', on);
   $('f').querySelector('button[type=submit]').disabled = on;
 }
@@ -123,6 +126,7 @@ function setBusy(on) {
 async function run() {
   const req = ++state.req;
   $('err').textContent = '';
+  $('best-panel').hidden = true; // results belong to the previous site/window
   // Only show the spinner if the answer is not instant (cached responses come back in ~0.1 s).
   const busyTimer = setTimeout(() => { if (req === state.req) setBusy(true); }, 250);
   try {
@@ -130,6 +134,7 @@ async function run() {
       const data = await api(trackQuery($('lat').value, $('lon').value));
       if (req !== state.req) return;
       state.data = data;
+      loadSlips(req);
     } else {
       const picks = [...document.querySelectorAll('.cmp-site')].map(s => s.value).filter(v => v !== '');
       const uniq = [...new Set(picks)].map(i => state.sites[+i]);
@@ -176,9 +181,17 @@ function renderExplore(i) {
   drawTimeline($('timeline'), d, state.idx);
   $('hz-source').textContent = d.horizon.source;
 
+  const count = (key, cls, setWord, riseWord) => {
+    const c = nextChange(d.points, i, key);
+    const up = isUp(key, p[key]);
+    const word = c ? (c.kind === 'set' ? setWord : riseWord) : (up ? setWord : riseWord);
+    return `<div class="count ${cls}"><small>${word} in</small><b>${c ? fmtDur(c.hours) : '—'}</b>` +
+      `<span>${c ? fmtTime(c.t) : (up ? 'stays up to window end' : 'stays down to window end')}</span></div>`;
+  };
   const row = (name, cls, b, hz, v) =>
     `<dt class="${cls}">${name}</dt><dd>az ${fmt(b.az_deg)}° · el ${fmt(b.el_deg, 2)}°</dd><dd>${visWord(v)} <small>(terrain ${fmt(hz, 2)}°)</small></dd>`;
-  $('readout').innerHTML = `<h2>${fmtTime(p.t)}</h2><dl>
+  $('readout').innerHTML = `<h2>${fmtTime(p.t)}</h2>
+    <div class="counts">${count('sun_vis', 'sun', 'Sunset', 'Sunrise')}${count('earth_vis', 'earth', 'Earthset', 'Earthrise')}</div><dl>
     ${row('Sun', 'sun', p.sun, p.sun_horizon_deg, p.sun_vis)}
     ${row('Earth', 'earth', p.earth, p.earth_horizon_deg, p.earth_vis)}</dl>`;
 
@@ -190,16 +203,144 @@ function renderExplore(i) {
   }
 }
 
+/** From point i: when does the body next change state (set if visible now, rise if hidden)? */
+// Same "up" rule as the server summary: Sun = any part of the disk visible, Earth = centre above the horizon.
+const isUp = (key, v) => (key === 'earth_vis' ? v >= 0.5 : v > 0);
+function nextChange(points, i, key) {
+  const up = isUp(key, points[i][key]), t0 = Date.parse(points[i].t);
+  for (let k = i + 1; k < points.length; k++) {
+    if (isUp(key, points[k][key]) !== up) return { kind: up ? 'set' : 'rise', t: points[k].t, hours: (Date.parse(points[k].t) - t0) / 36e5 };
+  }
+  return null;
+}
+function fmtDur(h) {
+  if (h < 1) return `${Math.round(h * 60)} min`;
+  const d = Math.floor(h / 24), r = Math.round(h - d * 24);
+  return d ? `${d} d ${r} h` : `${r} h`;
+}
+// Server summary counts from the window start: show sunset if the body starts up, sunrise if it starts down.
+const startEvent = (s, setH, setT, riseH, riseT, setW, riseW) => {
+  const startsUp = s[riseH] == null && s[setH] != null || (s[setH] != null && s[riseH] != null && s[setH] < s[riseH]);
+  return startsUp ? { w: setW, h: s[setH], t: s[setT] } : { w: riseW, h: s[riseH], t: s[riseT] };
+};
+const sunEvt = s => startEvent(s, 'hours_to_sunset', 'next_sunset', 'hours_to_sunrise', 'next_sunrise', 'Sunset', 'Sunrise');
+const earthEvt = s => startEvent(s, 'hours_to_earthset', 'next_earthset', 'hours_to_earthrise', 'next_earthrise', 'Earthset', 'Earthrise');
+
 const METRICS = [
   { label: 'Sun visible', key: s => s.sun_visible_pct, better: 'hi', show: s => fmt(s.sun_visible_pct, 1, '%'), note: () => 'of the time' },
   { label: 'Mean solar disk', key: s => s.sun_mean_fraction, better: 'hi', show: s => fmt(s.sun_mean_fraction * 100, 1, '%'), note: () => '≈ relative solar energy' },
   { label: 'Earth visible (DTE)', key: s => s.earth_visible_pct, better: 'hi', show: s => fmt(s.earth_visible_pct, 1, '%'), note: () => 'direct-to-Earth link possible' },
   { label: 'Longest night', key: s => s.longest_night_hours, better: 'lo', show: s => fmt(s.longest_night_hours, 0, ' h'), note: () => 'continuous darkness' },
   { label: 'Longest DTE gap', key: s => s.longest_dte_gap_hours, better: 'lo', show: s => fmt(s.longest_dte_gap_hours, 0, ' h'), note: () => 'no direct link' },
-  { label: 'Hours to sunset', key: s => s.hours_to_sunset, better: 'hi', show: s => fmt(s.hours_to_sunset, 0, ' h'), note: s => (s.next_sunset ? fmtTime(s.next_sunset) : 'no sunset in window') },
-  { label: 'Hours to Earthset', key: s => s.hours_to_earthset, better: 'hi', show: s => fmt(s.hours_to_earthset, 0, ' h'), note: s => (s.next_earthset ? fmtTime(s.next_earthset) : 'no Earthset in window') },
+  { label: 'From start: Sun', key: s => sunEvt(s).h, better: null, show: s => { const e = sunEvt(s); return e.h == null ? '—' : `${e.w} ${fmtDur(e.h)}`; }, note: s => { const e = sunEvt(s); return e.t ? fmtTime(e.t) : 'no change in window'; } },
+  { label: 'From start: Earth', key: s => earthEvt(s).h, better: null, show: s => { const e = earthEvt(s); return e.h == null ? '—' : `${e.w} ${fmtDur(e.h)}`; }, note: s => { const e = earthEvt(s); return e.t ? fmtTime(e.t) : 'no change in window'; } },
   { label: 'Sunlight windows', key: s => s.sunlight_windows.length, better: null, show: s => String(s.sunlight_windows.length), note: s => `longest ${fmt(Math.max(0, ...s.sunlight_windows.map(w => w.hours)), 0, ' h')}` },
 ];
+
+// ---------- launch slips (GET /api/compare, dates mode) ----------
+
+const SLIP_OFFSETS = [0, 1, 7, 30];
+
+async function loadSlips(req) {
+  const panel = $('slips');
+  if (state.demo || state.recorded) { panel.hidden = true; return; }
+  const q = new URLSearchParams({ sites: `${$('lat').value},${$('lon').value}`, start: $('start').value,
+    days: $('days').value, step_min: $('step').value, offsets_days: SLIP_OFFSETS.join(',') });
+  try {
+    const r = await api('/api/compare?' + q);
+    if (req !== state.req) return;
+    renderSlips(r);
+  } catch {
+    panel.hidden = true; // optional panel: the main view already shows any error
+  }
+}
+
+function renderSlips(r) {
+  const es = r.entries;
+  if (!es || es.length < 2) { $('slips').hidden = true; return; }
+  const base = es[0].summary;
+  const cols = [
+    ['Sun visible', s => s.sun_visible_pct, v => fmt(v, 1, '%'), 1, 'pts'],
+    ['Mean solar disk', s => s.sun_mean_fraction * 100, v => fmt(v, 1, '%'), 1, 'pts'],
+    ['Earth visible', s => s.earth_visible_pct, v => fmt(v, 1, '%'), 1, 'pts'],
+    ['Longest night', s => s.longest_night_hours, v => fmt(v, 0, ' h'), -1, 'h'],
+    ['Longest DTE gap', s => s.longest_dte_gap_hours, v => fmt(v, 0, ' h'), -1, 'h'],
+  ];
+  const best = cols.map(([, f, , dir]) => { const v = es.map(e => f(e.summary)); return dir > 0 ? Math.max(...v) : Math.min(...v); });
+  const head = `<tr><th>Landing</th>${cols.map(c => `<th>${c[0]}</th>`).join('')}<th>First event</th><th></th></tr>`;
+  const rows = es.map((e, k) => {
+    const s = e.summary, off = SLIP_OFFSETS[k];
+    const label = `${off ? `+${off} d` : 'Planned'}<small>${fmtTime(e.start).replace(/ 00 UTC$| UTC$/, '')}</small>`;
+    const cells = cols.map(([, f, show, dir, unit], j) => {
+      const v = f(s), d = v - f(base), isBest = v === best[j] && new Set(es.map(x => f(x.summary))).size > 1;
+      const cls = k && Math.abs(d) > 0.05 ? ((d > 0) === (dir > 0) ? 'up' : 'down') : '';
+      const bar = j === 0 ? `<span class="bar" style="width:${Math.round(v * 0.6)}px"></span>` : '';
+      const delta = k ? `<small>${d > 0 ? '+' : ''}${fmt(d, unit === 'h' ? 0 : 1)} ${unit}</small>` : '';
+      return `<td class="${cls}">${bar}${show(v)}${isBest ? ' ★' : ''}${delta}</td>`;
+    }).join('');
+    const ev = sunEvt(s);
+    const evTxt = ev.h == null ? '—' : `${ev.w} in ${fmtDur(ev.h)}`;
+    return `<tr class="${k ? '' : 'on'}"><td>${label}</td>${cells}<td>${evTxt}</td>` +
+      `<td>${k ? `<button type="button" class="secondary" data-start="${e.start}">View</button>` : ''}</td></tr>`;
+  }).join('');
+  $('slips-table').innerHTML = head + rows;
+  $('slips-note').textContent = `${$('days').value}-day window from each date`;
+  $('slips').hidden = false;
+  $('slips-table').querySelectorAll('[data-start]').forEach(b => (b.onclick = () => {
+    $('start').value = b.dataset.start.slice(0, 16);
+    run();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }));
+}
+
+// ---------- best spot nearby (GET /api/best_nearby) ----------
+
+async function findBest() {
+  if (state.demo || state.recorded) { $('err').textContent = 'The best-spot search needs the live server.'; return; }
+  const lat = +$('lat').value, lon = +$('lon').value;
+  const q = new URLSearchParams({ lat, lon, start: $('start').value, days: $('days').value, step_min: $('step').value, radius_m: 500, grid_m: 100 });
+  $('err').textContent = '';
+  setBusy(true, 'Searching every 100 m within 500 m of the site… this takes about 3–15 s.');
+  try {
+    const r = await api('/api/best_nearby?' + q);
+    renderBest(r);
+  } catch (e) {
+    $('err').textContent = e.message;
+  } finally {
+    setBusy(false);
+  }
+}
+
+function bearing(a, b) {
+  const dN = b.lat_deg - a.lat_deg, dE = (b.lon_deg - a.lon_deg) * Math.cos(a.lat_deg * Math.PI / 180);
+  const deg = (Math.atan2(dE, dN) * 180 / Math.PI + 360) % 360;
+  return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
+}
+
+function renderBest(r) {
+  const c = r.center, b = r.best, el = $('best-panel');
+  const same = !b || b.distance_m < 1;
+  const rows = [
+    ['Sun visible', 'sun_visible_pct', v => fmt(v, 1, '%'), 1],
+    ['Mean solar disk', 'sun_mean_fraction', v => fmt(v * 100, 1, '%'), 1],
+    ['Earth visible', 'earth_visible_pct', v => fmt(v, 1, '%'), 1],
+    ['Longest night', 'longest_night_hours', v => fmt(v, 0, ' h'), -1],
+    ['Ground height', 'ground_m', v => fmt(v, 0, ' m'), 0],
+  ];
+  el.innerHTML = `<div class="bp-head"><h2>Best spot within ${fmt(r.radius_m, 0)} m</h2><small>${r.candidates_evaluated} spots checked</small></div>
+    ${same ? '<p>The selected site is already the best spot in this radius.</p>' : `
+    <p>${fmt(b.distance_m, 0)} m ${bearing(c, b)} of the site: ${fmt(b.lat_deg, 4)}°, ${fmt(b.lon_deg, 4)}°E</p>
+    <table><tr><th></th><th>Site</th><th>Best spot</th><th>Change</th></tr>
+    ${rows.map(([name, k, f, dir]) => {
+      const d = b[k] - c[k], cls = dir && Math.abs(d) > 1e-9 ? ((d > 0) === (dir > 0) ? 'up' : 'down') : '';
+      const dTxt = k === 'sun_mean_fraction' ? fmt(d * 100, 1, ' pts') : k.endsWith('pct') ? fmt(d, 1, ' pts') : fmt(d, 0, k === 'ground_m' ? ' m' : ' h');
+      return `<tr><td>${name}</td><td>${f(c[k])}</td><td>${f(b[k])}</td><td class="${cls}">${d > 0 ? '+' : ''}${dTxt}</td></tr>`;
+    }).join('')}</table>
+    <div class="bp-actions"><button type="button" id="use-best">Use this spot</button></div>`}`;
+  el.hidden = false;
+  const use = $('use-best');
+  if (use) use.onclick = () => { $('lat').value = +b.lat_deg.toFixed(5); $('lon').value = +b.lon_deg.toFixed(5); $('site').value = ''; el.hidden = true; run(); };
+}
 
 function renderCompare(i) {
   const cols = $('cmp-cols'), bands = $('cmp-bands');
@@ -301,6 +442,7 @@ async function start() {
 
 function wire() {
   $('f').onsubmit = e => { e.preventDefault(); run(); };
+  $('best').onclick = findBest;
   $('site').onchange = () => {
     const s = state.sites[$('site').value];
     if (s) { $('lat').value = s.lat_deg; $('lon').value = s.lon_deg; run(); }
