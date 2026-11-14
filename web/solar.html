@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lunar Landing Site Navigator: Moon &amp; Solar System 3D</title>
-<link rel="stylesheet" href="solar.css?v=20261114d">
+<link rel="stylesheet" href="solar.css?v=20261114k">
 <script>
 // Three.js 0.170.0: vendored copy in web/vendor/three (works offline); CDN only if it is missing.
 // Must run before any module script, so the import map is built synchronously here.
@@ -63,15 +63,13 @@
     <div class="left-body">
       <h1>Lunar Navigator</h1>
       <div class="group">
-        <div class="label">Theme</div>
-        <div class="seg" role="radiogroup" aria-label="Theme">
-          <button role="radio" data-theme-set="dark" aria-checked="true">Dark</button>
-          <button role="radio" data-theme-set="light" aria-checked="false">Light</button>
-        </div>
+        <div class="label">Landing sites</div>
+        <label class="switch"><input type="checkbox" id="cat-hist" checked><i></i>Historical <small class="n" id="n-hist"></small><span class="key landed"></span><span class="key lost"></span></label>
+        <label class="switch"><input type="checkbox" id="cat-planned" checked><i></i>Planned missions <small class="n" id="n-planned"></small><span class="key planned"></span></label>
+        <label class="switch"><input type="checkbox" id="cat-cand" checked><i></i>Candidate regions <small class="n" id="n-cand"></small><span class="key cand"></span></label>
       </div>
       <div class="group">
         <div class="label">Layers</div>
-        <label class="switch"><input type="checkbox" id="opt-sites" checked><i></i>Landing sites</label>
         <label class="switch"><input type="checkbox" id="opt-labels" checked><i></i>Planet labels</label>
         <label class="switch"><input type="checkbox" id="opt-trails" checked><i></i>Trails</label>
         <label class="switch"><input type="checkbox" id="opt-orbits" checked><i></i>Orbits</label>
@@ -86,6 +84,7 @@
           <button data-cam="all">System</button>
         </div>
       </div>
+      <p class="credit" id="site-note"></p>
       <a class="link" href="index.html">Site analysis</a>
       <p class="credit">Moon imagery: NASA SVS CGI Moon Kit (LRO LROC, LOLA)</p>
     </div>
@@ -95,6 +94,6 @@
   <div id="card" class="glass" role="dialog" aria-live="polite" hidden></div>
 </main>
 
-<script type="module" src="solar/main.js?v=20261114d"></script>
+<script type="module" src="solar/main.js?v=20261114k"></script>
 </body>
 </html>

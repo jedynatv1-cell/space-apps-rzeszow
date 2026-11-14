@@ -27,6 +27,12 @@ function initServer() {
   state.recorded = q.get('recorded') === '1';
   // Deep link from the 3D view: index.html?lat=..&lon=..
   if (q.has('lat') && q.has('lon')) { $('lat').value = q.get('lat'); $('lon').value = q.get('lon'); }
+  // Demo deep links: ?start=2026-11-14&days=14&step=60&mode=public&view=compare&cmp=Haworth,Malapert&site=Shackleton&focus=slips|pano|sky
+  if (q.has('start')) { const v = q.get('start'); $('start').value = v.length <= 10 ? `${v}T00:00` : v.slice(0, 16); }
+  if (q.has('days')) $('days').value = q.get('days');
+  if (q.has('step')) $('step').value = q.get('step');
+  if (q.has('mode')) state.mode = q.get('mode');
+  state.link = q;
   state.api = (q.get('api') ?? localStorage.getItem('navApi') ?? '').replace(/\/$/, '');
   $('api').value = state.api;
   showServer();
@@ -90,10 +96,14 @@ async function api(path) {
 
 // ---------- sites ----------
 
+// Short, readable site labels: "Haworth (Artemis region)", "Tranquility Base (Statio Tranquillitatis) (Apollo 11)".
+const shortMission = s => (s.status === 'candidate_region' ? 'Artemis region' : String(s.mission).replace(/\s*\(.*\)$/, ''));
+const siteLabel = s => `${String(s.name).replace(/\s*\(candidate region\)$/, '')} (${shortMission(s)})`;
+
 async function loadSites() {
   state.sites = await api('/api/sites');
   const opts = state.sites.map((s, i) =>
-    `<option value="${i}">${s.south_polar ? '❄ ' : ''}${esc(s.name)} (${esc(s.mission)})</option>`).join('');
+    `<option value="${i}">${s.south_polar ? '[Polar] ' : ''}${esc(siteLabel(s))}</option>`).join('');
   $('site').innerHTML = '<option value="">— custom coordinates —</option>' + opts;
   // Compare defaults: the first three south-polar sites (falls back to the first three).
   const polar = state.sites.map((s, i) => [s, i]).filter(([s]) => s.south_polar).map(([, i]) => i);
@@ -102,6 +112,21 @@ async function loadSites() {
     sel.innerHTML = (k === 2 ? '<option value="">— none —</option>' : '') + opts;
     if (picks[k] !== undefined) sel.value = picks[k];
   });
+  // Deep-link site choices by (part of) the site name, so links survive changes to the site list order.
+  const byName = t => {
+    const k = t.trim().toLowerCase(), names = state.sites.map(s => s.name.toLowerCase());
+    const starts = names.findIndex(n => n.startsWith(k));
+    return starts >= 0 ? starts : names.findIndex(n => n.includes(k));
+  };
+  const link = state.link;
+  if (link?.has('cmp')) {
+    const ids = link.get('cmp').split(',').map(byName).filter(i => i >= 0);
+    document.querySelectorAll('.cmp-site').forEach((sel, k) => { sel.value = ids[k] !== undefined ? ids[k] : (k === 2 ? '' : sel.value); });
+  }
+  if (link?.has('site')) {
+    const i = byName(link.get('site'));
+    if (i >= 0) { $('lat').value = state.sites[i].lat_deg; $('lon').value = state.sites[i].lon_deg; }
+  }
   // Keep the explore selection in sync with typed coordinates.
   const match = state.sites.findIndex(s => Math.abs(s.lat_deg - +$('lat').value) < 1e-6 && Math.abs(s.lon_deg - +$('lon').value) < 1e-6);
   $('site').value = match >= 0 ? match : '';
@@ -120,8 +145,16 @@ function setBusy(on, msg = BUSY_DEFAULT) {
   $('busy').hidden = !on;
   $('busy').lastChild.textContent = ' ' + msg;
   $('best').disabled = on;
+  if ($('csv')) $('csv').disabled = on;
   document.querySelector('main').classList.toggle('loading', on);
   $('f').querySelector('button[type=submit]').disabled = on;
+}
+
+function downloadCsv() {
+  if (state.demo || state.recorded) { $('err').textContent = 'CSV export requires the live server.'; return; }
+  const problem = validate();
+  if (problem) { $('err').textContent = problem; return; }
+  location.href = (state.api || '') + trackQuery($('lat').value, $('lon').value) + '&format=csv';
 }
 
 /** Check the form before asking the server; returns a plain-language problem or null. */
@@ -144,7 +177,14 @@ async function run() {
   const req = ++state.req;
   $('err').textContent = '';
   const problem = validate();
-  if (problem) { $('err').textContent = problem; return; }
+  if (problem) {
+    $('err').textContent = problem;
+    // Do not leave old numbers looking current: dim the results and hide the panels tied to the last run.
+    document.querySelector('main').classList.add('stale');
+    ['slips', 'best-panel'].forEach(id => { $(id).hidden = true; });
+    return;
+  }
+  document.querySelector('main').classList.remove('stale');
   $('best-panel').hidden = true; // results belong to the previous site/window
   // Only show the spinner if the answer is not instant (cached responses come back in ~0.1 s).
   const busyTimer = setTimeout(() => { if (req === state.req) setBusy(true); }, 250);
@@ -221,7 +261,7 @@ function renderExplore(i) {
   if ($('metrics').dataset.for !== String(state.req)) {
     $('metrics').dataset.for = state.req;
     renderVerdict(d.summary);
-    $('metrics').innerHTML = METRICS.map(m =>
+    $('metrics').innerHTML = METRICS.filter(m => !m.compareOnly).map(m =>
       `<div class="metric${mClass(m)}"><small>${mLabel(m)}</small><b>${m.show(d.summary)}</b><small>${m.note(d.summary)}</small></div>`).join('');
   }
 }
@@ -250,10 +290,13 @@ const sunEvt = s => startEvent(s, 'hours_to_sunset', 'next_sunset', 'hours_to_su
 const earthEvt = s => startEvent(s, 'hours_to_earthset', 'next_earthset', 'hours_to_earthrise', 'next_earthrise', 'Earthset', 'Earthrise');
 
 // Traffic-light thresholds from docs/RESEARCH.md §9.1 (team synthesis from Barker 2021, VIPER, Gläser 2014).
+// Interim rule (L1, pending L4's revised thresholds): the verdict uses Sun % and Earth % only; over a
+// month-long window the longest night almost always exceeds 120 h, so it is shown as information.
 const VERDICT = [
   { name: 'Sunlight', pub: 'Sunlight', v: s => s.sun_visible_pct, good: v => v >= 70, ok: v => v >= 50, show: v => fmt(v, 0, '%') },
-  { name: 'Longest night', pub: 'Longest darkness', v: s => s.longest_night_hours, good: v => v <= 50, ok: v => v <= 120, show: v => fmt(v, 0, ' h') },
-  { name: 'Longest Earth-link gap', pub: 'Longest time without Earth contact', v: s => s.longest_dte_gap_hours, good: v => v <= 24, ok: v => v <= 168, show: v => fmt(v, 0, ' h') },
+  { name: 'Earth in view', pub: 'Can talk to Earth', v: s => s.earth_visible_pct, good: v => v >= 50, ok: v => v >= 30, show: v => fmt(v, 0, '%') },
+  { name: 'Longest night', pub: 'Longest darkness', v: s => s.longest_night_hours, info: true, show: v => fmt(v, 0, ' h') },
+  { name: 'Longest Earth-link gap', pub: 'Longest time without Earth contact', v: s => s.longest_dte_gap_hours, info: true, show: v => fmt(v, 0, ' h') },
 ];
 const RANK = { good: 0, marginal: 1, poor: 2 };
 const VERDICT_WORD = { good: 'Good site', marginal: 'Marginal site', poor: 'Poor site' };
@@ -270,16 +313,18 @@ const FACTS = [
 
 function renderVerdict(s) {
   const rows = VERDICT.map(c => {
-    const v = c.v(s), cls = v == null ? 'marginal' : c.good(v) ? 'good' : c.ok(v) ? 'marginal' : 'poor';
+    const v = c.v(s), cls = c.info ? 'info' : v == null ? 'marginal' : c.good(v) ? 'good' : c.ok(v) ? 'marginal' : 'poor';
     return { c, v, cls };
   });
-  const worst = rows.reduce((a, r) => (RANK[r.cls] > RANK[a] ? r.cls : a), 'good');
+  const worst = rows.filter(r => !r.c.info).reduce((a, r) => (RANK[r.cls] > RANK[a] ? r.cls : a), 'good');
+  // Same site always gets the same fact.
+  const factIdx = Math.abs(Math.round(+$('lat').value * 1000 + +$('lon').value * 7)) % FACTS.length;
   const pub = state.mode === 'public';
   const short = +$('days').value < 29.5;
   $('verdict').innerHTML = `<div class="v-head ${worst}"><span class="dot"></span><b>${VERDICT_WORD[worst]}</b><small>for a solar-powered lander</small></div>
     <ul>${rows.map(r => `<li class="${r.cls}"><span class="dot"></span>${pub ? r.c.pub : r.c.name}<span>${r.c.show(r.v)}</span></li>`).join('')}</ul>
     ${short ? '<p class="caveat">Thresholds assume a window of at least one lunar month (29.5 days); this window is shorter.</p>' : ''}
-    ${pub ? `<p class="fact">${FACTS[state.req % FACTS.length]}</p>` : '<p class="caveat expert">Good / marginal / poor: Sun ≥ 70 / 50–70 / &lt; 50 %, night ≤ 50 / 50–120 / &gt; 120 h, link gap ≤ 24 / 24–168 / &gt; 168 h (team synthesis, RESEARCH §9.1).</p>'}`;
+    ${pub ? `<p class="fact">${FACTS[factIdx]}</p>` : '<p class="caveat expert">Verdict from Sun % (good ≥ 70, marginal 50–70; RESEARCH §9.1) and Earth % (good ≥ 50, marginal 30–50; interim). Night and link gap are shown for information while thresholds are revised.</p>'}`;
   $('verdict').hidden = false;
 }
 
@@ -292,8 +337,8 @@ const METRICS = [
   { label: 'Earth visible (DTE)', pub: 'Can talk to Earth', key: s => s.earth_visible_pct, better: 'hi', show: s => fmt(s.earth_visible_pct, 1, '%'), note: () => 'direct-to-Earth link possible' },
   { label: 'Longest night', pub: 'Longest darkness', key: s => s.longest_night_hours, better: 'lo', show: s => fmt(s.longest_night_hours, 0, ' h'), note: () => 'continuous darkness' },
   { label: 'Longest DTE gap', expert: true, key: s => s.longest_dte_gap_hours, better: 'lo', show: s => fmt(s.longest_dte_gap_hours, 0, ' h'), note: () => 'no direct link' },
-  { label: 'From start: Sun', expert: true, key: s => sunEvt(s).h, better: null, show: s => { const e = sunEvt(s); return e.h == null ? '—' : `<span class="ev">${e.w}</span>${fmtDur(e.h)}`; }, note: s => { const e = sunEvt(s); return e.t ? fmtTime(e.t) : 'no change in window'; } },
-  { label: 'From start: Earth', expert: true, key: s => earthEvt(s).h, better: null, show: s => { const e = earthEvt(s); return e.h == null ? '—' : `<span class="ev">${e.w}</span>${fmtDur(e.h)}`; }, note: s => { const e = earthEvt(s); return e.t ? fmtTime(e.t) : 'no change in window'; } },
+  { label: 'From start: Sun', expert: true, compareOnly: true, key: s => sunEvt(s).h, better: null, show: s => { const e = sunEvt(s); return e.h == null ? '—' : `<span class="ev">${e.w}</span>${fmtDur(e.h)}`; }, note: s => { const e = sunEvt(s); return e.t ? fmtTime(e.t) : 'no change in window'; } },
+  { label: 'From start: Earth', expert: true, compareOnly: true, key: s => earthEvt(s).h, better: null, show: s => { const e = earthEvt(s); return e.h == null ? '—' : `<span class="ev">${e.w}</span>${fmtDur(e.h)}`; }, note: s => { const e = earthEvt(s); return e.t ? fmtTime(e.t) : 'no change in window'; } },
   { label: 'Sunlight windows', expert: true, key: s => s.sunlight_windows.length, better: null, show: s => String(s.sunlight_windows.length), note: s => `longest ${fmt(Math.max(0, ...s.sunlight_windows.map(w => w.hours)), 0, ' h')}` },
 ];
 
@@ -320,14 +365,15 @@ function renderSlips(r) {
   if (!es || es.length < 2) { $('slips').hidden = true; return; }
   const base = es[0].summary;
   const cols = [
-    ['Sun visible', s => s.sun_visible_pct, v => fmt(v, 1, '%'), 1, 'pts'],
-    ['Mean solar disk', s => s.sun_mean_fraction * 100, v => fmt(v, 1, '%'), 1, 'pts'],
-    ['Earth visible', s => s.earth_visible_pct, v => fmt(v, 1, '%'), 1, 'pts'],
-    ['Longest night', s => s.longest_night_hours, v => fmt(v, 0, ' h'), -1, 'h'],
-    ['Longest DTE gap', s => s.longest_dte_gap_hours, v => fmt(v, 0, ' h'), -1, 'h'],
+    ['Sun visible', s => s.sun_visible_pct, v => fmt(v, 1, '%'), 1, 'pts', 'Sunlit time'],
+    ['Mean solar disk', s => s.sun_mean_fraction * 100, v => fmt(v, 1, '%'), 1, 'pts', 'Solar power'],
+    ['Earth visible', s => s.earth_visible_pct, v => fmt(v, 1, '%'), 1, 'pts', 'Can talk to Earth'],
+    ['Longest night', s => s.longest_night_hours, v => fmt(v, 0, ' h'), -1, 'h', 'Longest darkness'],
+    ['Longest DTE gap', s => s.longest_dte_gap_hours, v => fmt(v, 0, ' h'), -1, 'h', 'Longest time without Earth contact'],
   ];
   const best = cols.map(([, f, , dir]) => { const v = es.map(e => f(e.summary)); return dir > 0 ? Math.max(...v) : Math.min(...v); });
-  const head = `<tr><th>Landing</th>${cols.map(c => `<th>${c[0]}</th>`).join('')}<th>First event</th><th></th></tr>`;
+  const pubL = state.mode === 'public';
+  const head = `<tr><th>Landing</th>${cols.map(c => `<th>${pubL ? c[5] : c[0]}</th>`).join('')}<th>First event</th><th></th></tr>`;
   const rows = es.map((e, k) => {
     const s = e.summary, off = SLIP_OFFSETS[k];
     const label = `${off ? `+${off} d` : 'Planned'}<small>${fmtTime(e.start).replace(/ 00 UTC$| UTC$/, '')}</small>`;
@@ -409,7 +455,7 @@ function renderCompare(i) {
     cols.dataset.for = key;
     cols.innerHTML = state.cmp.map((c, k) => `<div class="panel cmp-col">
         <h3>${esc(c.site.name)}</h3>
-        <div class="sub">${esc(c.site.mission)} · ${fmt(c.site.lat_deg, 3)}°, ${fmt(c.site.lon_deg, 3)}°E</div>
+        <div class="sub">${esc(shortMission(c.site))} · ${fmt(c.site.lat_deg, 3)}°, ${fmt(c.site.lon_deg, 3)}°E</div>
         <canvas data-k="${k}"></canvas><div class="now"></div></div>`).join('');
     bands.innerHTML = state.cmp.map((c, k) =>
       `<div class="cmp-band"><span title="${esc(c.site.name)}">${esc(c.site.name)}</span><canvas data-k="${k}"></canvas></div>`).join('');
@@ -503,7 +549,21 @@ async function start() {
   $('err').textContent = '';
   try {
     await loadSites();
+    const link = state.link;
+    if (link?.get('view') === 'compare' && state.view !== 'compare') {
+      state.view = 'compare';
+      document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === 'compare')));
+      document.querySelectorAll('[data-only]').forEach(el => { el.hidden = el.dataset.only !== 'compare'; });
+    }
     await run();
+    const focus = { slips: 'slips', pano: 'pano-panel', sky: 'sky' }[link?.get('focus')];
+    if (focus) { // the slip panel loads after the main view, so wait until the target is shown
+      const t0 = Date.now(), tick = () => {
+        if ($(focus).offsetParent) $(focus).scrollIntoView({ block: 'start' });
+        else if (Date.now() - t0 < 8000) setTimeout(tick, 150);
+      };
+      tick();
+    }
   } catch (e) {
     $('err').textContent = e.message;
     $('server').open = true;
@@ -513,8 +573,13 @@ async function start() {
 function wire() {
   $('f').onsubmit = e => { e.preventDefault(); run(); };
   $('best').onclick = findBest;
+  if ($('csv')) $('csv').onclick = downloadCsv;
   document.querySelectorAll('[data-mode]').forEach(b => (b.onclick = () => setMode(b.dataset.mode)));
   setMode(state.mode);
+  const syncCustom = () => document.body.classList.toggle('custom', $('site').value === '');
+  $('site').addEventListener('change', syncCustom);
+  ['lat', 'lon'].forEach(id => $(id).addEventListener('input', syncCustom));
+  setTimeout(syncCustom, 0);
   $('site').onchange = () => {
     const s = state.sites[$('site').value];
     if (s) { $('lat').value = s.lat_deg; $('lon').value = s.lon_deg; run(); }
