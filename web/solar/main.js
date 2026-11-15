@@ -4,13 +4,17 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import * as E from './ephem.js?v=20261115j';
-import { SITE_INFO } from './site-info.js?v=20261115j';
+import * as E from './ephem.js?v=20261115k';
+import { SITE_INFO } from './site-info.js?v=20261115k';
 
 const $ = id => document.getElementById(id);
 // Embed mode (solar.html?embed=1): shown inside a panel on index.html. Settings start collapsed and
 // "Horizon" sends the site to the parent page instead of navigating away.
 const EMBED = new URLSearchParams(location.search).get('embed') === '1';
+// Only candidate regions show on load; ?show=all (for the demo video) switches every category on.
+if (new URLSearchParams(location.search).get('show') === 'all') {
+  for (const id of ['cat-hist', 'cat-planned', 'cat-cand']) { const el = document.getElementById(id); if (el) el.checked = true; }
+}
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const MOON_R = E.BODIES.moon.radius;
 const PLANETS = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
@@ -324,6 +328,8 @@ function updateOrbits(d) {
 // ---------- landing sites ----------
 
 const siteMarkers = [];
+// Rocket marker (inline SVG, coloured through currentColor = the category colour).
+const ROCKET_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="r-body" d="M12 1.8c3.3 2.3 5 6.2 5 10.4l-1.6 3.3H8.6L7 12.2c0-4.2 1.7-8.1 5-10.4z"/><path class="r-fin" d="M7.3 11.4 4 14.6l.9 3.6 3.4-2.4zM16.7 11.4l3.3 3.2-.9 3.6-3.4-2.4z"/><circle class="r-win" cx="12" cy="9" r="1.9"/><path class="r-flame" d="M9.6 16.6h4.8L12 22z"/></svg>';
 
 // CPU copy of the packed LOLA height map (R = high byte, G = low byte, half-metres + 20000).
 let heightPx = null, heightW = 0, heightH = 0;
@@ -364,7 +370,12 @@ const statusOf = s => STATUS[s.status] || ['landed', s.status || '', 'hist'];
 // Candidate regions: NASA describes each Artemis region as roughly 15 x 15 km (docs/RESEARCH.md §9.1);
 // we draw that square around the proxy centre. Planned missions: no published ellipse, so an
 // illustrative 5 km radius circle. Both follow the LOLA surface and are depth-tested (far side hidden).
-const AREA = { cand: { half: 7.5, color: 0xffd84d }, planned: { radius: 5, color: 0xff9a1f } };
+const AREA = {
+  cand: { half: 7.5, color: 0xffd84d, size: 7.5 },     // NASA: each Artemis region ~15 x 15 km
+  planned: { radius: 5, color: 0xff9a1f, size: 5 },     // illustrative, no published ellipse
+  hist: { radius: 1, color: 0x3fd68f, size: 1 },        // illustrative ~1 km around the landing point
+};
+const LOST_COLOR = 0xff5d5d;
 const AREA_LIFT = 1.2;
 const areaMeshes = []; // km above the sampled LOLA height, so the patch stays above the coarser mesh
 
@@ -375,8 +386,9 @@ function surfacePoint(n, east, north, de, dn) {
 }
 
 function makeArea(m) {
-  const spec = AREA[m.cat];
-  if (!spec) return null;
+  const base = AREA[m.cat];
+  if (!base) return null;
+  const spec = m.site.status === 'crashed' ? { ...base, color: LOST_COLOR } : base;
   const n = m.normal, lon = Math.atan2(n.y, n.x), lat = Math.asin(n.z);
   const east = new THREE.Vector3(-Math.sin(lon), Math.cos(lon), 0);
   const north = new THREE.Vector3(-Math.sin(lat) * Math.cos(lon), -Math.sin(lat) * Math.sin(lon), Math.cos(lat));
@@ -416,7 +428,7 @@ function addSites(sites) {
     const el = document.createElement('div');
     el.className = `site ${statusOf(s)[0]}`;
     el.setAttribute('aria-label', s.name);
-    el.innerHTML = '<i></i>';
+    el.innerHTML = `<i>${ROCKET_SVG}</i>`;
     const obj = new CSS2DObject(el);
     // Sit on the real (LOLA) surface, not the bare sphere: polar sites are up to ~5 km above it.
     obj.position.copy(n).multiplyScalar(MOON_R + heightKm(s.lat_deg, s.lon_deg) + 0.3);
@@ -517,6 +529,7 @@ function showCard(m) {
         <dt>Location</dt><dd>${fmtLoc(s)}</dd>
         ${m.cat === 'cand' ? '<dt>Area</dt><dd>~15 × 15 km NASA candidate region (shaded on the surface)</dd>' : ''}
         ${m.cat === 'planned' ? '<dt>Area</dt><dd>illustrative 5 km radius (no published landing ellipse)</dd>' : ''}
+        ${m.cat === 'hist' ? '<dt>Area</dt><dd>illustrative ~1 km around the landing point</dd>' : ''}
       </dl>
       ${whyHtml(m, info)}
       <div class="cond"><div class="sec">Conditions, next 30 days</div><div class="cond-body">Computing…</div></div>
@@ -535,7 +548,7 @@ function showCard(m) {
     c.querySelector('[data-fly]').onclick = e => {
       e.stopPropagation();
       hideCard(true); // do not cover the landing area we are flying to
-      flyTo(m.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix)), Math.min(camera.position.length(), MOON_R + 150)); // ~150 km up: a 15 km landing area spans ~100 px
+      flyTo(m.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix)), Math.min(camera.position.length(), MOON_R + Math.max(20, 20 * (AREA[m.cat]?.size ?? 7.5)))); // area spans ~100 px
     };
     c.hidden = false;
     c.style.animation = 'none'; void c.offsetWidth; c.style.animation = '';
@@ -649,7 +662,7 @@ function updateMarkers() {
     const p = wn.clone().multiplyScalar(MOON_R);
     const toCam = camDir.clone().sub(p).normalize();
     m.facing = wn.dot(toCam) > 0.06; // far side and grazing limb
-    const closeUp = m.area && dist < MOON_R + 800; // the shaded area is the landing zone up close
+    const closeUp = m.area && dist < MOON_R + 60 * (AREA[m.cat]?.size ?? 7.5); // up close the patch is the landing zone
     m.obj.visible = near && cats[m.cat] && m.facing && !closeUp;
     if (m.area) m.area.visible = cats[m.cat]; // depth test hides areas on the far side
   }

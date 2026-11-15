@@ -4,20 +4,20 @@
 
 const COLORS = {
   sun: '#f59e0b',
-  sunFill: 'rgba(245, 158, 11, 0.08)',
+  sunFill: 'rgba(245, 158, 11, 0.09)',
   earth: '#38bdf8',
-  earthFill: 'rgba(56, 189, 248, 0.07)',
-  terrain: '#263044',
-  terrainDeep: '#0d121d',
+  earthFill: 'rgba(56, 189, 248, 0.08)',
+  terrain: '#1e293b',
+  terrainDeep: '#090d16',
   terrainEdge: '#94a3b8',
-  terrainHatch: 'rgba(148, 163, 184, 0.055)',
+  terrainHatch: 'rgba(148, 163, 184, 0.09)',
   grid: 'rgba(148, 163, 184, 0.11)',
-  zero: 'rgba(148, 163, 184, 0.45)',
-  frame: 'rgba(148, 163, 184, 0.22)',
-  label: '#8b95a9',
-  cardinal: '#cbd5e1',
-  sky: '#0c1426',
-  skyEdge: '#050811',
+  zero: 'rgba(148, 163, 184, 0.48)',
+  frame: '#26344d',
+  label: '#8b9bb4',
+  cardinal: '#e2e8f0',
+  sky: '#0a1120',
+  skyEdge: '#04070d',
   cursor: '#f8fafc',
 };
 const MONO = '"JetBrains Mono", "SFMono-Regular", ui-monospace, monospace';
@@ -46,9 +46,6 @@ function horizonAt(mask, az) {
 
 /**
  * Elevation range shown by the sky plot: [lo at the rim, hi at the centre].
- * Sized around the Sun and Earth, not the tallest mountain: near a crater wall the terrain can
- * reach +15..25° while the bodies stay within a few degrees of 0°, and scaling to the mountain
- * squeezes the sky into a tiny ring. Terrain higher than `hi` is clamped to the centre (occluded).
  */
 function skyRange(datas, full) {
   if (full) return { lo: -5, hi: 90 };
@@ -85,20 +82,29 @@ function niceStep(span) {
   return 30;
 }
 
+/** Draw 45-degree engineering hatch inside the current clip region. */
+function fillHatch(g, x0, y0, w, h, step = 9) {
+  g.save();
+  g.strokeStyle = COLORS.terrainHatch;
+  g.lineWidth = 1;
+  g.beginPath();
+  for (let d = -h; d < w + h; d += step) {
+    g.moveTo(x0 + d, y0 + h);
+    g.lineTo(x0 + d + h, y0);
+  }
+  g.stroke();
+  g.restore();
+}
+
 /**
  * Polar sky plot seen from above: zenith side at the centre, north up, east right.
- * The radial scale is linear in elevation between range.hi (centre) and range.lo (rim), so
- * near-horizon geometry at the pole (Sun within ~±2°) is readable. Body disks use their true
- * angular radius on that scale; terrain is drawn after the bodies so it occludes them.
  */
 function drawSky(canvas, data, idx, opts = {}) {
   const { g, w, h } = setupCanvas(canvas);
   const range = opts.range || skyRange([data], opts.full);
   const compact = !!opts.compact;
-  const margin = compact ? 18 : 26;
+  const margin = compact ? 20 : 28;
   const R = Math.min(w, h) / 2 - margin, cx = w / 2, cy = h / 2;
-  // Before layout settles the canvas can be 0 px wide: R < 0 makes createRadialGradient throw and
-  // aborts the whole render. Skip this frame; the page redraws on resize and on the next update.
   if (!(R > 4)) return range;
   const span = range.hi - range.lo;
   const clampEl = el => Math.max(range.lo, Math.min(range.hi, el));
@@ -116,7 +122,7 @@ function drawSky(canvas, data, idx, opts = {}) {
   // Elevation rings + azimuth spokes.
   g.save(); g.beginPath(); g.arc(cx, cy, R, 0, 2 * Math.PI); g.clip();
   g.strokeStyle = COLORS.grid; g.lineWidth = 1; g.fillStyle = COLORS.label;
-  g.font = `${compact ? 9.5 : 10.5}px ${MONO}`;
+  g.font = `${compact ? 9 : 10}px ${MONO}`;
   const step = niceStep(span);
   for (let el = Math.ceil(range.lo / step) * step; el < range.hi; el += step) {
     const r = rOf(el);
@@ -132,9 +138,8 @@ function drawSky(canvas, data, idx, opts = {}) {
   }
 
   const pts = data.points;
-  // Paths over the whole window, broken where the body leaves the plotted range.
   const track = (key, color) => {
-    g.strokeStyle = color; g.globalAlpha = 0.42; g.lineWidth = compact ? 1.15 : 1.5;
+    g.strokeStyle = color; g.globalAlpha = 0.45; g.lineWidth = compact ? 1.15 : 1.5;
     g.beginPath(); let pen = false, prevAz = null;
     for (const p of pts) {
       const b = p[key];
@@ -149,23 +154,28 @@ function drawSky(canvas, data, idx, opts = {}) {
   track('sun', COLORS.sun);
   track('earth', COLORS.earth);
 
-  // Bodies at the current time, true angular size on this scale (min 2.5 px so they stay visible).
+  // Bodies at the current time + reticle.
   const p = pts[Math.max(0, Math.min(pts.length - 1, Math.round(idx)))];
   const body = (b, color, glow) => {
     if (b.el_deg + b.radius_deg < range.lo) return;
     const [x, y] = xy(b.az_deg, b.el_deg);
-    const r = Math.max(2.6, b.radius_deg * R / span);
+    const r = Math.max(2.8, b.radius_deg * R / span);
     if (glow) {
-      const gg = g.createRadialGradient(x, y, r * 0.3, x, y, r * 2.8 + 5);
-      gg.addColorStop(0, 'rgba(245, 158, 11, 0.34)'); gg.addColorStop(1, 'rgba(245, 158, 11, 0)');
-      g.fillStyle = gg; g.beginPath(); g.arc(x, y, r * 2.8 + 5, 0, 2 * Math.PI); g.fill();
+      const gg = g.createRadialGradient(x, y, r * 0.3, x, y, r * 2.5 + 4);
+      gg.addColorStop(0, 'rgba(245, 158, 11, 0.32)'); gg.addColorStop(1, 'rgba(245, 158, 11, 0)');
+      g.fillStyle = gg; g.beginPath(); g.arc(x, y, r * 2.5 + 4, 0, 2 * Math.PI); g.fill();
     }
     g.fillStyle = color; g.beginPath(); g.arc(x, y, r, 0, 2 * Math.PI); g.fill();
+    if (!compact) {
+      g.strokeStyle = color; g.lineWidth = 1;
+      g.beginPath(); g.arc(x, y, r + 3.5, 0, 2 * Math.PI); g.stroke();
+    }
   };
   if (p) { body(p.earth, COLORS.earth, false); body(p.sun, COLORS.sun, true); }
 
-  // Terrain: everything between the horizon line and the rim.
+  // Terrain: everything between the horizon line and the rim, with engineering hatch.
   const mask = data.horizon, n = mask.elev_deg.length;
+  g.save();
   g.beginPath();
   for (let i = 0; i <= n; i++) {
     const az = (i % n) * mask.az_step_deg;
@@ -174,11 +184,16 @@ function drawSky(canvas, data, idx, opts = {}) {
   }
   g.closePath();
   g.moveTo(cx + R + 2, cy); g.arc(cx, cy, R + 2, 0, 2 * Math.PI, true);
+  g.clip('evenodd');
   const tGrad = g.createRadialGradient(cx, cy, R * 0.2, cx, cy, R);
   tGrad.addColorStop(0, COLORS.terrain);
   tGrad.addColorStop(1, COLORS.terrainDeep);
-  g.fillStyle = tGrad; g.fill('evenodd');
-  g.strokeStyle = COLORS.terrainEdge; g.lineWidth = 1.25;
+  g.fillStyle = tGrad;
+  g.fillRect(cx - R - 2, cy - R - 2, 2 * R + 4, 2 * R + 4);
+  fillHatch(g, cx - R, cy - R, 2 * R, 2 * R, 8);
+  g.restore();
+
+  g.strokeStyle = COLORS.terrainEdge; g.lineWidth = 1.3;
   g.beginPath();
   for (let i = 0; i <= n; i++) {
     const az = (i % n) * mask.az_step_deg;
@@ -187,12 +202,11 @@ function drawSky(canvas, data, idx, opts = {}) {
   }
   g.stroke();
 
-  // Shared azimuth cursor ray if hovered.
   if (opts.hoverAz != null && Number.isFinite(opts.hoverAz)) {
     const hz = horizonAt(mask, opts.hoverAz);
     const [rx, ry] = xy(opts.hoverAz, range.lo);
     const [hx, hy] = xy(opts.hoverAz, hz);
-    g.strokeStyle = 'rgba(248, 250, 252, 0.65)';
+    g.strokeStyle = 'rgba(248, 250, 252, 0.7)';
     g.lineWidth = 1;
     g.setLineDash([3, 3]);
     g.beginPath(); g.moveTo(cx, cy); g.lineTo(rx, ry); g.stroke();
@@ -202,16 +216,26 @@ function drawSky(canvas, data, idx, opts = {}) {
   }
   g.restore();
 
-  // Rim + compass labels.
-  g.strokeStyle = COLORS.frame; g.lineWidth = 1;
+  // Radar degree bezel around rim.
+  g.strokeStyle = COLORS.frame; g.lineWidth = 1.2;
   g.beginPath(); g.arc(cx, cy, R, 0, 2 * Math.PI); g.stroke();
-  g.font = `600 ${compact ? 10 : 11}px ${MONO}`;
+  for (let az = 0; az < 360; az += 5) {
+    if (compact && az % 15 !== 0) continue;
+    const a = az * Math.PI / 180;
+    const r0 = R, r1 = R + (az % 45 === 0 ? 5 : az % 15 === 0 ? 3.5 : 2);
+    g.strokeStyle = az % 45 === 0 ? COLORS.cardinal : COLORS.frame;
+    g.beginPath();
+    g.moveTo(cx + r0 * Math.sin(a), cy - r0 * Math.cos(a));
+    g.lineTo(cx + r1 * Math.sin(a), cy - r1 * Math.cos(a));
+    g.stroke();
+  }
+  g.font = `600 ${compact ? 9.5 : 10.5}px ${MONO}`;
   g.textAlign = 'center'; g.textBaseline = 'middle';
   const labels = compact ? [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']]
-    : [[0, 'N'], [45, 'NE'], [90, 'E'], [135, 'SE'], [180, 'S'], [225, 'SW'], [270, 'W'], [315, 'NW']];
+    : [[0, '000° N'], [45, 'NE'], [90, '090° E'], [135, 'SE'], [180, '180° S'], [225, 'SW'], [270, '270° W'], [315, 'NW']];
   for (const [az, t] of labels) {
-    const a = az * Math.PI / 180, r = R + margin / 2 + 1;
-    g.fillStyle = t.length === 1 ? COLORS.cardinal : COLORS.label;
+    const a = az * Math.PI / 180, r = R + margin / 2 + 2;
+    g.fillStyle = t.includes('°') || t.length === 1 ? COLORS.cardinal : COLORS.label;
     g.fillText(t, cx + r * Math.sin(a), cy - r * Math.cos(a));
   }
   g.textAlign = 'start'; g.textBaseline = 'alphabetic';
@@ -230,7 +254,6 @@ function timelineLayout(w) { return { left: 46, right: 10, w }; }
 
 /**
  * Timeline: elevation chart (Sun, Earth, horizon under each) above two visibility bands.
- * opts.bandsOnly draws just the bands (used per site in the compare view).
  */
 function drawTimeline(canvas, data, idx, opts = {}) {
   const { g, w, h } = setupCanvas(canvas);
@@ -242,11 +265,10 @@ function drawTimeline(canvas, data, idx, opts = {}) {
   const bandH = opts.bandsOnly ? Math.floor((h - 6) / 2) : 13;
   const axisH = opts.bandsOnly ? 0 : 18;
   const chartTop = 6, chartBot = opts.bandsOnly ? 0 : h - axisH - 2 * bandH - 12;
-  g.font = `10.5px ${MONO}`;
+  g.font = `10px ${MONO}`;
 
   let yOf = null;
   if (!opts.bandsOnly) {
-    // Background well for elevation plot.
     g.fillStyle = COLORS.skyEdge;
     g.fillRect(left, chartTop, W, chartBot - chartTop);
 
@@ -269,7 +291,6 @@ function drawTimeline(canvas, data, idx, opts = {}) {
       g.fillText(`${+v.toFixed(1)}°`, 4, y(v) + 3.5);
     }
 
-    // Subtle sunlit & DTE area shading between body elevation and local terrain horizon when visible.
     g.save();
     g.beginPath(); g.rect(left, chartTop, W, chartBot - chartTop); g.clip();
     const fillVis = (bodyKey, hzKey, visPred, fillStyle) => {
@@ -312,11 +333,11 @@ function drawTimeline(canvas, data, idx, opts = {}) {
     g.strokeRect(left, chartTop, W, chartBot - chartTop);
   }
 
-  // Visibility bands: brightness = visible fraction of the disk.
+  // Visibility bands.
   const bandTop = opts.bandsOnly ? 2 : chartBot + 6;
   const band = (row, key, rgb) => {
     const top = bandTop + row * (bandH + 2);
-    g.fillStyle = '#060911'; g.fillRect(left, top, W, bandH);
+    g.fillStyle = '#04060b'; g.fillRect(left, top, W, bandH);
     for (let i = 0; i < n; i++) {
       const v = pts[i][key];
       if (v <= 0) continue;
@@ -324,7 +345,7 @@ function drawTimeline(canvas, data, idx, opts = {}) {
       const x0 = x(i - 0.5), x1 = x(i + 0.5);
       g.fillRect(Math.max(left, x0), top, Math.min(w - right, x1) - Math.max(left, x0) + 0.5, bandH);
     }
-    g.strokeStyle = 'rgba(148, 163, 184, 0.14)'; g.lineWidth = 1;
+    g.strokeStyle = COLORS.frame; g.lineWidth = 1;
     g.strokeRect(left, top, W, bandH);
     g.fillStyle = row === 0 ? COLORS.sun : COLORS.earth;
     g.fillText(key === 'sun_vis' ? 'SUN' : 'DTE', 4, top + bandH - 2.5);
@@ -350,37 +371,34 @@ function drawTimeline(canvas, data, idx, opts = {}) {
     }
   }
 
-  // Cursor + active point markers.
+  // Playhead cursor.
   const cx = x(idx);
   const p = pts[Math.max(0, Math.min(n - 1, Math.round(idx)))];
   g.strokeStyle = COLORS.cursor; g.lineWidth = 1.5;
   g.beginPath(); g.moveTo(cx, 2); g.lineTo(cx, h - axisH); g.stroke();
   if (!opts.bandsOnly && p && yOf) {
-    // Playhead cap triangle
     g.fillStyle = COLORS.cursor;
     g.beginPath(); g.moveTo(cx - 4, 2); g.lineTo(cx + 4, 2); g.lineTo(cx, 7); g.closePath(); g.fill();
-    // Active elevation dots on Sun & Earth curves
     for (const [b, col] of [[p.sun, COLORS.sun], [p.earth, COLORS.earth]]) {
       const py = yOf(b.el_deg);
       if (py >= chartTop && py <= chartBot) {
         g.fillStyle = col;
         g.beginPath(); g.arc(cx, py, 3.2, 0, 2 * Math.PI); g.fill();
-        g.strokeStyle = '#050811'; g.lineWidth = 1; g.stroke();
+        g.strokeStyle = '#04070d'; g.lineWidth = 1; g.stroke();
       }
     }
   }
 }
 
 /**
- * 360° horizon panorama: azimuth on x (N-E-S-W-N), elevation on y. LOLA skyline as terrain,
- * Sun/Earth paths over the window, and both disks at the cursor time (true angular size, drawn as
- * ellipses because the vertical scale is stretched). Terrain is drawn last so it hides the bodies.
- * Returns the layout so callers can map the mouse back to azimuth.
+ * 360° horizon panorama: azimuth on x (N-E-S-W-N), elevation on y.
+ * Includes top degree ruler (000°-360°), bottom compass bezel, 45° terrain cross-hatching,
+ * active HUD callouts on Sun/Earth disks, and shared interactive azimuth cursor.
  */
 function drawPanorama(canvas, data, idx, opts = {}) {
   const { g, w, h } = setupCanvas(canvas);
   const compact = !!opts.compact;
-  const left = 42, right = 10, top = compact ? 6 : 10, bottom = compact ? 18 : 22;
+  const left = 42, right = 10, top = compact ? 14 : 18, bottom = compact ? 18 : 20;
   const mask = data.horizon, pts = data.points, n = mask.elev_deg.length;
   const range = opts.range || panoRange([data]);
   const lo = range.lo, hi = range.hi;
@@ -395,8 +413,8 @@ function drawPanorama(canvas, data, idx, opts = {}) {
   grad.addColorStop(0, COLORS.skyEdge); grad.addColorStop(1, COLORS.sky);
   g.fillStyle = grad; g.fillRect(left, top, W, H);
 
-  // Elevation grid + labels.
-  g.font = `${compact ? 10 : 10.5}px ${MONO}`; g.fillStyle = COLORS.label; g.lineWidth = 1;
+  // Elevation grid + left degree axis.
+  g.font = `${compact ? 9.5 : 10}px ${MONO}`; g.fillStyle = COLORS.label; g.lineWidth = 1;
   const step = niceStep(hi - lo);
   for (let el = Math.ceil(lo / step) * step; el <= hi; el += step) {
     g.strokeStyle = el === 0 ? COLORS.zero : COLORS.grid;
@@ -406,16 +424,31 @@ function drawPanorama(canvas, data, idx, opts = {}) {
   }
   g.setLineDash([]);
 
-  // Azimuth grid + compass labels.
+  // Azimuth grid + top degree ruler (000°..360°) + bottom compass bezel.
   g.textAlign = 'center';
   const compass = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'N'];
-  for (let az = 0; az <= 360; az += 45) {
-    g.strokeStyle = az % 90 === 0 ? 'rgba(148, 163, 184, 0.16)' : COLORS.grid;
-    g.beginPath(); g.moveTo(left + az * xs, top); g.lineTo(left + az * xs, top + H); g.stroke();
-    const lbl = compass[az / 45];
-    g.fillStyle = lbl.length === 1 ? COLORS.cardinal : COLORS.label;
-    g.font = `${lbl.length === 1 ? '600 ' : ''}${compact ? 10 : 10.5}px ${MONO}`;
-    g.fillText(lbl, left + az * xs, h - 5);
+  for (let az = 0; az <= 360; az += 15) {
+    const ax = left + az * xs;
+    // Top minor/major ticks
+    g.strokeStyle = az % 45 === 0 ? COLORS.cardinal : COLORS.frame;
+    g.beginPath();
+    g.moveTo(ax, top);
+    g.lineTo(ax, top - (az % 45 === 0 ? 4 : 2.5));
+    g.stroke();
+
+    if (az % 45 === 0) {
+      g.strokeStyle = az % 90 === 0 ? 'rgba(148, 163, 184, 0.16)' : COLORS.grid;
+      g.beginPath(); g.moveTo(ax, top); g.lineTo(ax, top + H); g.stroke();
+      const lbl = compass[az / 45];
+      g.fillStyle = lbl.length === 1 ? COLORS.cardinal : COLORS.label;
+      g.font = `${lbl.length === 1 ? '600 ' : ''}${compact ? 9.5 : 10}px ${MONO}`;
+      g.fillText(lbl, ax, h - 4);
+      if (!compact || az % 90 === 0) {
+        g.fillStyle = COLORS.label;
+        g.font = `9px ${MONO}`;
+        g.fillText(`${String(az).padStart(3, '0')}°`, ax, top - 5);
+      }
+    }
   }
   g.textAlign = 'start';
 
@@ -423,7 +456,7 @@ function drawPanorama(canvas, data, idx, opts = {}) {
 
   // Sun & Earth paths over the window.
   const path = (key, color) => {
-    g.strokeStyle = color; g.globalAlpha = 0.45; g.lineWidth = compact ? 1.3 : 1.55; g.beginPath();
+    g.strokeStyle = color; g.globalAlpha = 0.48; g.lineWidth = compact ? 1.3 : 1.55; g.beginPath();
     let prev = null;
     for (const p of pts) {
       const b = p[key];
@@ -440,85 +473,88 @@ function drawPanorama(canvas, data, idx, opts = {}) {
   const p = pts[Math.max(0, Math.min(pts.length - 1, Math.round(idx)))];
   const disk = (b, color, glow) => {
     const rx = Math.max(2.6, b.radius_deg * xs), ry = Math.max(2.6, b.radius_deg * ys);
-    for (const off of [0, -360, 360]) { // draw wrapped copies near the N edge
+    for (const off of [0, -360, 360]) {
       const cx = left + (((b.az_deg % 360) + 360) % 360 + off) * xs, cy = y(b.el_deg);
       if (cx < left - rx || cx > left + W + rx) continue;
       if (glow) {
-        const gg = g.createRadialGradient(cx, cy, 0, cx, cy, ry * 2.4 + 6);
-        gg.addColorStop(0, 'rgba(245, 158, 11, 0.35)'); gg.addColorStop(1, 'rgba(245, 158, 11, 0)');
-        g.fillStyle = gg; g.beginPath(); g.arc(cx, cy, ry * 2.4 + 6, 0, 2 * Math.PI); g.fill();
+        const gg = g.createRadialGradient(cx, cy, 0, cx, cy, ry * 2.2 + 5);
+        gg.addColorStop(0, 'rgba(245, 158, 11, 0.34)'); gg.addColorStop(1, 'rgba(245, 158, 11, 0)');
+        g.fillStyle = gg; g.beginPath(); g.arc(cx, cy, ry * 2.2 + 5, 0, 2 * Math.PI); g.fill();
       }
       g.fillStyle = color; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI); g.fill();
     }
   };
   if (p) { disk(p.earth, COLORS.earth, false); disk(p.sun, COLORS.sun, true); }
 
-  // LOLA Terrain silhouette polygon + vertical topographic scanlines + ridge crest stroke.
+  // LOLA Terrain silhouette polygon + 45° engineering hatch + ridge crest stroke.
+  g.save();
   g.beginPath(); g.moveTo(left, top + H);
   for (let i = 0; i <= n; i++) g.lineTo(left + i * mask.az_step_deg * xs, y(mask.elev_deg[i % n]));
   g.lineTo(left + W, top + H); g.closePath();
+  g.clip();
   const pGrad = g.createLinearGradient(0, top, 0, top + H);
   pGrad.addColorStop(0, COLORS.terrain);
   pGrad.addColorStop(1, COLORS.terrainDeep);
-  g.fillStyle = pGrad; g.fill();
-
-  // Subtle vertical topographic scanlines inside terrain polygon.
-  g.save();
-  g.clip();
-  g.strokeStyle = COLORS.terrainHatch; g.lineWidth = 1;
-  g.beginPath();
-  for (let az = 0; az <= 360; az += 6) {
-    const sx = left + az * xs;
-    g.moveTo(sx, top); g.lineTo(sx, top + H);
-  }
-  g.stroke();
+  g.fillStyle = pGrad;
+  g.fillRect(left, top, W, H);
+  fillHatch(g, left, top, W, H, 9);
   g.restore();
 
   // Crisp terrain ridge crest line.
-  g.strokeStyle = COLORS.terrainEdge; g.lineWidth = 1.3; g.beginPath();
+  g.strokeStyle = COLORS.terrainEdge; g.lineWidth = 1.35; g.beginPath();
   for (let i = 0; i <= n; i++) {
     const X = left + i * mask.az_step_deg * xs, Y = y(mask.elev_deg[i % n]);
     i ? g.lineTo(X, Y) : g.moveTo(X, Y);
   }
   g.stroke();
 
-  // Subtle current-time azimuth ticks at top of frame for Sun & Earth.
-  if (p) {
-    for (const [b, col] of [[p.sun, COLORS.sun], [p.earth, COLORS.earth]]) {
-      const bx = x(b.az_deg);
-      g.strokeStyle = col; g.globalAlpha = 0.55; g.lineWidth = 1;
-      g.beginPath(); g.moveTo(bx, top); g.lineTo(bx, top + 5); g.stroke();
-      g.globalAlpha = 1;
+  // Active HUD reticle callouts for Sun & Earth (drawn over terrain so you can see where occluded bodies sit).
+  if (p && !compact) {
+    for (const [lbl, b, vis, col] of [['SUN', p.sun, p.sun_vis, COLORS.sun], ['DTE', p.earth, p.earth_vis, COLORS.earth]]) {
+      const cx = x(b.az_deg), cy = Math.max(top + 10, Math.min(top + H - 8, y(b.el_deg)));
+      g.strokeStyle = col; g.lineWidth = 1;
+      g.setLineDash(vis > 0 ? [] : [2, 2]);
+      g.beginPath(); g.arc(cx, cy, 5.5, 0, 2 * Math.PI); g.stroke();
+      g.setLineDash([]);
+      const tag = `${lbl} ${b.el_deg >= 0 ? '+' : ''}${b.el_deg.toFixed(1)}°`;
+      g.font = `600 9.5px ${MONO}`;
+      const tw = g.measureText(tag).width + 6;
+      const tx = cx + 8 + tw > left + W ? cx - tw - 8 : cx + 8;
+      const ty = Math.max(top + 3, Math.min(top + H - 15, cy - 6));
+      g.fillStyle = 'rgba(4, 7, 13, 0.84)';
+      g.fillRect(tx, ty, tw, 13);
+      g.fillStyle = col;
+      g.fillText(tag, tx + 3, ty + 9.5);
     }
   }
 
-  // Shared interactive azimuth cursor (when hovering Panorama or Compare strips).
+  // Shared interactive azimuth cursor.
   if (opts.hoverAz != null && Number.isFinite(opts.hoverAz)) {
     const az = ((opts.hoverAz % 360) + 360) % 360;
     const cx = left + az * xs;
     const hz = horizonAt(mask, az);
     const cy = y(hz);
-    g.strokeStyle = 'rgba(248, 250, 252, 0.78)';
+    g.strokeStyle = 'rgba(248, 250, 252, 0.82)';
     g.lineWidth = 1.2;
     g.setLineDash([3, 3]);
     g.beginPath(); g.moveTo(cx, top); g.lineTo(cx, top + H); g.stroke();
     g.setLineDash([]);
     g.fillStyle = COLORS.cursor;
     g.beginPath(); g.arc(cx, cy, 3.2, 0, 2 * Math.PI); g.fill();
-    g.strokeStyle = '#050811'; g.lineWidth = 1; g.stroke();
+    g.strokeStyle = '#04070d'; g.lineWidth = 1; g.stroke();
 
     const dir = DIRS8[Math.round(az / 45) % 8];
     const tag = `AZ ${az.toFixed(1)}° (${dir}) · RIDGE ${hz >= 0 ? '+' : ''}${hz.toFixed(2)}°`;
     g.font = `600 10px ${MONO}`;
     const tw = g.measureText(tag).width + 10;
     const tx = Math.min(left + W - tw - 4, Math.max(left + 4, cx + 6));
-    const ty = top + 6;
-    g.fillStyle = 'rgba(5, 8, 17, 0.88)';
-    g.fillRect(tx, ty, tw, 17);
-    g.strokeStyle = 'rgba(248, 250, 252, 0.28)';
-    g.strokeRect(tx, ty, tw, 17);
+    const ty = top + 5;
+    g.fillStyle = 'rgba(4, 7, 13, 0.9)';
+    g.fillRect(tx, ty, tw, 16);
+    g.strokeStyle = 'rgba(248, 250, 252, 0.35)';
+    g.strokeRect(tx, ty, tw, 16);
     g.fillStyle = COLORS.cursor;
-    g.fillText(tag, tx + 5, ty + 12);
+    g.fillText(tag, tx + 5, ty + 11.5);
   }
 
   g.restore();
