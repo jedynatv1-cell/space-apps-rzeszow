@@ -445,8 +445,8 @@ function drawPanorama(canvas, data, idx, opts = {}) {
       g.fillStyle = lbl.length === 1 ? COLORS.cardinal : COLORS.label;
       g.font = `${lbl.length === 1 ? '600 ' : ''}${compact ? 9.5 : 10}px ${MONO}`;
       g.textAlign = az === 0 ? 'left' : az === 360 ? 'right' : 'center';
-      g.fillText(lbl, ax, h - 4);
-      if (!compact || az % 90 === 0) {
+      if (w >= 400 || az % 90 === 0) g.fillText(lbl, ax, h - 4);
+      if ((!compact && w >= 400) || az % 90 === 0) {
         g.fillStyle = 'rgba(139, 155, 180, 0.65)';
         g.font = `9px ${MONO}`;
         g.fillText(`${String(az).padStart(3, '0')}°`, ax, top - 5);
