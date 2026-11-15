@@ -17,7 +17,7 @@
   }
   const pick = (o, keys) => { for (const k of keys) if (o && o[k] != null) return o[k]; return null; };
   function adapt(r) {
-    const pred = pick(r, ['predicted', 'pred', 'model', 'learned']) || {};
+    const pred = pick(r, ['predicted', 'pred', 'learned']) || (r && typeof r.model === 'object' ? r.model : null) || {};
     const ref = pick(r, ['de440', 'de440s', 'reference', 'ref', 'truth']) || {};
     const body = o => ({
       dist: pick(o, ['distance_km', 'dist_km', 'r_km']),
@@ -35,7 +35,8 @@
       const a = errDeg * Math.PI / 180;
       errKm = Math.sqrt(P.dist ** 2 + R.dist ** 2 - 2 * P.dist * R.dist * Math.cos(a));
     }
-    return { P, R, errKm, errDeg, t: pick(r, ['t', 'time', 'epoch', 't_utc']), model: pick(r, ['model_name', 'model_id']) };
+    const modelName = pick(r, ['model_name', 'model_id']) || (r && typeof r.model === 'string' ? r.model : null);
+    return { P, R, errKm, errDeg, t: pick(r, ['target', 't', 'time', 'epoch', 't_utc']), model: modelName };
   }
   function angSep(ra1, de1, ra2, de2) {
     const d = Math.PI / 180;

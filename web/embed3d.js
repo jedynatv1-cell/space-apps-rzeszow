@@ -1,10 +1,10 @@
-// 3D Moon panel on the analysis page: embeds solar.html?embed=1 in an iframe (lazy-loaded so the
-// WebGL scene only starts when the panel scrolls into view). Clicking "Analyse this site" in a 3D site
+// 3D Moon panel on the analysis page: embeds solar.html?embed=1 in an iframe (eager-loaded as
+// top panel under the command bar). Clicking "Analyse this site" in a 3D site
 // card posts the site here; we put it into the analysis form and run it. No changes to app.js needed.
 'use strict';
 
 (() => {
-  const V = '20261115n';
+  const V = '20261115q';
 
   function build() {
     const css = document.createElement('style');
@@ -21,10 +21,16 @@
         </div>
         <a class="subtle-link" href="solar.html" target="_blank" rel="noopener">Open full 3D view ↗</a>
       </div>
-      <iframe title="3D Moon with landing sites" loading="lazy" src="solar.html?embed=1&v=${V}"></iframe>`;
-    const mount = document.getElementById('moon3d-mount') || document.getElementById('explore') || document.querySelector('main');
-    const before = mount.querySelector('#slips');
-    if (before && before.parentElement === mount) mount.insertBefore(sec, before); else mount.append(sec);
+      <iframe title="3D Moon with landing sites" loading="eager" src="solar.html?embed=1&v=${V}"></iframe>`;
+    const mount = document.getElementById('moon3d-mount');
+    if (mount) {
+      mount.append(sec);
+    } else {
+      const fallback = document.getElementById('explore') || document.querySelector('main');
+      const before = fallback?.querySelector('#slips');
+      if (before && before.parentElement === fallback) fallback.insertBefore(sec, before);
+      else fallback?.append(sec);
+    }
   }
 
   function applySite({ lat, lon, name }) {

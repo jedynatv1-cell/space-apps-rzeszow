@@ -15,6 +15,7 @@ const state = {
   skyView: 'pano',  // 'pano' (default 360° panorama) | 'polar' (polar sky plot)
   cmpView: 'pano',  // 'pano' (stacked 360° panoramas) | 'polar' (side-by-side polar)
   hoverAz: null,    // synchronized azimuth cursor across panoramas/radar
+  hoverIdx: null,   // synchronized time cursor across visibility timelines
   data: null,       // explore: one /api/track response
   cmp: [],          // compare: [{ site, data }]
   idx: 0,           // current point index (float while playing)
@@ -224,6 +225,14 @@ function pointCount() {
 const fmt = (v, digits = 1, unit = '') => (v == null || Number.isNaN(v) ? '—' : `${(+v).toFixed(digits)}${unit}`);
 const fmtTime = t => (t ? t.replace('T', ' ').replace(/(:\d\d)(\.\d+)?Z$/, ' UTC').replace(/:00 UTC$/, ' UTC') : '—');
 const visWord = v => (v >= 0.999 ? 'full disk' : v > 0 ? `${Math.round(v * 100)}% visible` : 'occluded');
+const ptWinOpen = p => !!(p && p.sun_vis > 0 && p.earth_vis >= 0.5);
+const winReason = p => (!p ? 'No data' : p.sun_vis <= 0 && p.earth_vis < 0.5 ? 'No Sun · No DTE' : p.sun_vis <= 0 ? 'No Sun' : p.earth_vis < 0.5 ? 'Low DTE' : 'Window open');
+
+function applyWinBadge(el, open, text) {
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = text ? `win-tag ${open ? 'open' : 'closed'}` : 'win-tag';
+}
 
 function render() {
   const n = pointCount();
@@ -234,8 +243,13 @@ function render() {
 }
 
 function renderExplore(i) {
-  const d = state.data, p = d.points[i];
+  const d = state.data, p = d.points[i], p0 = d.points[0];
+  const open = ptWinOpen(p), startOpen = ptWinOpen(p0);
   $('now').textContent = fmtTime(p.t);
+  applyWinBadge($('now-win'), open, winReason(p));
+  applyWinBadge($('start-win'), startOpen, startOpen ? 'OPEN' : 'CLOSED');
+  $('start-lbl')?.classList.toggle('win-open', startOpen);
+  $('start-lbl')?.classList.toggle('win-closed', !startOpen);
   const isPolar = state.skyView === 'polar';
   $('pano').hidden = isPolar;
   $('sky').hidden = !isPolar;
@@ -249,7 +263,7 @@ function renderExplore(i) {
     state.pano = drawPanorama($('pano'), d, state.idx, { hoverAz: state.hoverAz });
     $('pano-note').textContent = `${d.horizon.source}${d.horizon.ground_m != null ? ` · ${Math.round(d.horizon.ground_m)} m` : ''} · ${Math.max(1, Math.round(state.pano.exaggeration))}× relief`;
   }
-  drawTimeline($('timeline'), d, state.idx);
+  drawTimeline($('timeline'), d, state.idx, { hoverIdx: state.hoverIdx });
   $('hz-source').textContent = d.horizon.source;
 
   const trnEl = $('splice-trn-readout'), hdlEl = $('splice-hdl-readout'), dqgEl = $('splice-dqg-readout');
@@ -266,7 +280,7 @@ function renderExplore(i) {
   };
   const row = (name, cls, b, hz, v) =>
     `<dt class="${cls}">${name}</dt><dd>${fmt(b.az_deg)}° az · ${fmt(b.el_deg, 2)}° el</dd><dd>${visWord(v)} <small>(ridge ${fmt(hz, 1)}°)</small></dd>`;
-  $('readout').innerHTML = `<div class="readout-head"><span class="readout-lbl">Current epoch</span><span class="readout-time">${fmtTime(p.t)}</span></div>
+  $('readout').innerHTML = `<div class="readout-head"><span class="readout-lbl">Current epoch</span><span class="readout-time-wrap"><span id="epoch-win" class="win-tag ${open ? 'open' : 'closed'}">${winReason(p)}</span><span class="readout-time ${open ? 'win-open' : 'win-closed'}">${fmtTime(p.t)}</span></span></div>
     <div class="counts">${count('sun_vis', 'sun', 'Sunset', 'Sunrise')}${count('earth_vis', 'earth', 'Earthset', 'Earthrise')}</div><dl class="expert">
     ${row('Sun', 'sun', p.sun, p.sun_horizon_deg, p.sun_vis)}
     ${row('Earth', 'earth', p.earth, p.earth_horizon_deg, p.earth_vis)}</dl>`;
@@ -502,7 +516,32 @@ function renderCompare(i) {
     renderCmpTable();
   }
   const p0 = state.cmp[0].data.points[i];
+  const openCnt = state.cmp.filter(c => ptWinOpen(c.data.points[i])).length;
+  const startOpenCnt = state.cmp.filter(c => ptWinOpen(c.data.points[0])).length;
+  const nSites = state.cmp.length, anyOpen = openCnt > 0, anyStartOpen = startOpenCnt > 0;
   $('now').textContent = fmtTime(p0.t);
+  applyWinBadge($('now-win'), anyOpen, `${openCnt}/${nSites} OPEN`);
+  applyWinBadge($('start-win'), anyStartOpen, `${startOpenCnt}/${nSites} OPEN`);
+  $('start-lbl')?.classList.toggle('win-open', anyStartOpen);
+  $('start-lbl')?.classList.toggle('win-closed', !anyStartOpen);
+  const readEl = $('cmp-read');
+  if (readEl && state.cmpView === 'pano' && state.hoverAz == null) {
+    if (state.hoverIdx != null) {
+      const hi = Math.max(0, Math.min(state.cmp[0].data.points.length - 1, Math.round(state.hoverIdx)));
+      const hp = state.cmp[0].data.points[hi];
+      if (hp) {
+        const dt = new Date(hp.t);
+        const dd = String(dt.getUTCDate()).padStart(2, '0');
+        const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+        const hh = String(dt.getUTCHours()).padStart(2, '0');
+        const min = String(dt.getUTCMinutes()).padStart(2, '0');
+        const hOpenCnt = state.cmp.filter(c => ptWinOpen(c.data.points[hi])).length;
+        readEl.textContent = `${dd}.${mm} ${hh}:${min} UTC · ${hOpenCnt}/${nSites} OPEN`;
+      }
+    } else {
+      readEl.textContent = '0°–360° shared azimuth';
+    }
+  }
   const range = skyRange(state.cmp.map(c => c.data), false);
   const sharedPanoRange = panoRange(state.cmp.map(c => c.data));
   cols.querySelectorAll('.cmp-col').forEach((el, k) => {
@@ -512,11 +551,13 @@ function renderCompare(i) {
     } else {
       state.cmpPano = drawPanorama(cv, d, state.idx, { range: sharedPanoRange, compact: true, hoverAz: state.hoverAz });
     }
+    const pOpen = ptWinOpen(p);
     el.querySelector('.now').innerHTML =
-      `<span style="color:var(--sun)">Sun</span> ${fmt(p.sun.el_deg, 1)}° (${visWord(p.sun_vis)}) · ` +
-      `<span style="color:var(--earth)">Earth</span> ${fmt(p.earth.el_deg, 1)}° (${visWord(p.earth_vis)})`;
+      `<span class="win-tag ${pOpen ? 'open' : 'closed'}">${winReason(p)}</span> · ` +
+      `<span class="cmp-stat"><span style="color:var(--sun)">Sun</span> ${fmt(p.sun.el_deg, 1)}° (${visWord(p.sun_vis)})</span> · ` +
+      `<span class="cmp-stat"><span style="color:var(--earth)">Earth</span> ${fmt(p.earth.el_deg, 1)}° (${visWord(p.earth_vis)})</span>`;
   });
-  bands.querySelectorAll('canvas').forEach(c => drawTimeline(c, state.cmp[+c.dataset.k].data, state.idx, { bandsOnly: true }));
+  bands.querySelectorAll('canvas').forEach(c => drawTimeline(c, state.cmp[+c.dataset.k].data, state.idx, { bandsOnly: true, hoverIdx: state.hoverIdx }));
   $('hz-source').textContent = [...new Set(state.cmp.map(c => c.data.horizon.source))].join(', ');
 }
 
@@ -538,6 +579,7 @@ function renderCmpTable() {
 // ---------- time control ----------
 
 function setIdx(v) {
+  if (!Number.isFinite(v)) return;
   state.idx = Math.max(0, Math.min(pointCount() - 1, v));
   render();
 }
@@ -545,7 +587,16 @@ function setIdx(v) {
 function attachScrub(canvas) {
   const go = e => setIdx(timelineIndexAt(canvas, pointCount(), e.clientX));
   canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); pause(); go(e); });
-  canvas.addEventListener('pointermove', e => { if (e.buttons) go(e); });
+  canvas.addEventListener('pointermove', e => {
+    const idx = timelineIndexAt(canvas, pointCount(), e.clientX);
+    if (state.hoverIdx !== idx) { state.hoverIdx = idx; render(); }
+    if (e.buttons) go(e);
+  });
+  canvas.addEventListener('pointerleave', () => {
+    if (state.hoverIdx == null) return;
+    state.hoverIdx = null;
+    render();
+  });
 }
 
 let last = 0;
@@ -590,6 +641,7 @@ function setCmpView(v) {
 
 function setView(view) {
   state.view = view;
+  state.hoverIdx = null;
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === view)));
   document.querySelectorAll('[data-only]').forEach(el => { el.hidden = el.dataset.only !== view; });
   run();

@@ -244,9 +244,13 @@ function drawSky(canvas, data, idx, opts = {}) {
 
 /** Map a canvas x coordinate to a point index for a timeline drawn with the same layout. */
 function timelineIndexAt(canvas, n, clientX) {
+  if (!n || n <= 1) return 0;
   const rect = canvas.getBoundingClientRect();
   const { left, right } = timelineLayout(rect.width);
-  const f = (clientX - rect.left - left) / (rect.width - left - right);
+  const span = rect.width - left - right;
+  if (span <= 0) return 0;
+  const f = (clientX - rect.left - left) / span;
+  if (!Number.isFinite(f)) return 0;
   return Math.max(0, Math.min(n - 1, f * (n - 1)));
 }
 
@@ -262,9 +266,9 @@ function drawTimeline(canvas, data, idx, opts = {}) {
   const W = w - left - right;
   if (!(W > 10 && h > 10)) return;
   const x = i => left + W * i / Math.max(1, n - 1);
-  const bandH = opts.bandsOnly ? Math.floor((h - 6) / 2) : 13;
+  const bandH = opts.bandsOnly ? Math.floor((h - 8) / 3) : 10;
   const axisH = opts.bandsOnly ? 0 : 18;
-  const chartTop = 6, chartBot = opts.bandsOnly ? 0 : h - axisH - 2 * bandH - 12;
+  const chartTop = 6, chartBot = opts.bandsOnly ? 0 : h - axisH - 3 * bandH - 16;
   g.font = `10px ${MONO}`;
 
   let yOf = null;
@@ -333,25 +337,28 @@ function drawTimeline(canvas, data, idx, opts = {}) {
     g.strokeRect(left, chartTop, W, chartBot - chartTop);
   }
 
-  // Visibility bands.
-  const bandTop = opts.bandsOnly ? 2 : chartBot + 6;
-  const band = (row, key, rgb) => {
+  // Visibility bands (SUN, DTE, combined landing window WIN).
+  const bandTop = opts.bandsOnly ? Math.floor((h - (3 * bandH + 4)) / 2) : chartBot + 6;
+  const bandsBot = opts.bandsOnly ? (bandTop + 3 * bandH + 4) : (h - axisH);
+  const band = (row, label, lblColor, fillFn) => {
     const top = bandTop + row * (bandH + 2);
     g.fillStyle = '#04060b'; g.fillRect(left, top, W, bandH);
     for (let i = 0; i < n; i++) {
-      const v = pts[i][key];
-      if (v <= 0) continue;
-      g.fillStyle = `rgba(${rgb},${0.25 + 0.75 * v})`;
+      const c = fillFn(pts[i]);
+      if (!c) continue;
+      g.fillStyle = c;
       const x0 = x(i - 0.5), x1 = x(i + 0.5);
-      g.fillRect(Math.max(left, x0), top, Math.min(w - right, x1) - Math.max(left, x0) + 0.5, bandH);
+      const rx0 = Math.max(left, x0), rx1 = Math.min(w - right, x1 + 0.5);
+      if (rx1 > rx0) g.fillRect(rx0, top, rx1 - rx0, bandH);
     }
     g.strokeStyle = COLORS.frame; g.lineWidth = 1;
     g.strokeRect(left, top, W, bandH);
-    g.fillStyle = row === 0 ? COLORS.sun : COLORS.earth;
-    g.fillText(key === 'sun_vis' ? 'SUN' : 'DTE', 4, top + bandH - 2.5);
+    g.fillStyle = lblColor;
+    g.fillText(label, 4, top + bandH - 2);
   };
-  band(0, 'sun_vis', '245,158,11');
-  band(1, 'earth_vis', '56,189,248');
+  band(0, 'SUN', COLORS.sun, p => p.sun_vis > 0 ? `rgba(245,158,11,${0.25 + 0.75 * p.sun_vis})` : null);
+  band(1, 'DTE', COLORS.earth, p => p.earth_vis > 0 ? `rgba(56,189,248,${0.25 + 0.75 * p.earth_vis})` : null);
+  band(2, 'WIN', '#34d399', p => (p.sun_vis > 0 && p.earth_vis >= 0.5) ? '#10b981' : 'rgba(239,68,68,0.28)');
 
   // Day ticks.
   if (!opts.bandsOnly && n > 1) {
@@ -376,11 +383,12 @@ function drawTimeline(canvas, data, idx, opts = {}) {
   // Playhead cursor.
   const cx = x(idx);
   const p = pts[Math.max(0, Math.min(n - 1, Math.round(idx)))];
+  const curOpen = !!(p && p.sun_vis > 0 && p.earth_vis >= 0.5);
   g.strokeStyle = COLORS.cursor; g.lineWidth = 1.5;
-  g.beginPath(); g.moveTo(cx, 2); g.lineTo(cx, h - axisH); g.stroke();
+  g.beginPath(); g.moveTo(cx, 2); g.lineTo(cx, bandsBot); g.stroke();
   if (!opts.bandsOnly && p && yOf) {
-    g.fillStyle = COLORS.cursor;
-    g.beginPath(); g.moveTo(cx - 4, 2); g.lineTo(cx + 4, 2); g.lineTo(cx, 7); g.closePath(); g.fill();
+    g.fillStyle = curOpen ? '#10b981' : '#ef4444';
+    g.beginPath(); g.moveTo(cx - 4.5, 2); g.lineTo(cx + 4.5, 2); g.lineTo(cx, 8); g.closePath(); g.fill();
     for (const [b, col] of [[p.sun, COLORS.sun], [p.earth, COLORS.earth]]) {
       const py = yOf(b.el_deg);
       if (py >= chartTop && py <= chartBot) {
@@ -388,6 +396,37 @@ function drawTimeline(canvas, data, idx, opts = {}) {
         g.beginPath(); g.arc(cx, py, 3.2, 0, 2 * Math.PI); g.fill();
         g.strokeStyle = '#04070d'; g.lineWidth = 1; g.stroke();
       }
+    }
+  }
+
+  // Hover inspection crosshair + live OPEN/CLOSED date pill.
+  if (opts.hoverIdx != null) {
+    const hi = Math.max(0, Math.min(n - 1, Math.round(opts.hoverIdx)));
+    const hp = pts[hi];
+    if (hp) {
+      const hx = x(hi);
+      const hOpen = hp.sun_vis > 0 && hp.earth_vis >= 0.5;
+      const tagCol = hOpen ? '#34d399' : '#f87171';
+      g.save();
+      g.strokeStyle = hOpen ? 'rgba(52, 211, 153, 0.7)' : 'rgba(248, 113, 113, 0.7)';
+      g.lineWidth = 1; g.setLineDash([3, 3]);
+      g.beginPath(); g.moveTo(hx, 2); g.lineTo(hx, bandsBot); g.stroke();
+      g.setLineDash([]);
+      if (!opts.bandsOnly) {
+        const dt = new Date(hp.t);
+        const ts = `${String(dt.getUTCDate()).padStart(2, '0')}.${String(dt.getUTCMonth() + 1).padStart(2, '0')} ${String(dt.getUTCHours()).padStart(2, '0')}:${String(dt.getUTCMinutes()).padStart(2, '0')}`;
+        const lbl = `${ts} · ${hOpen ? 'OPEN' : 'CLOSED'}`;
+        g.font = `600 9.5px ${MONO}`;
+        const pw = g.measureText(lbl).width + 12;
+        const bx = Math.max(left + 4, Math.min(w - right - pw - 4, hx - pw / 2));
+        g.fillStyle = 'rgba(7, 10, 16, 0.94)';
+        g.fillRect(bx, chartTop + 4, pw, 16);
+        g.strokeStyle = hOpen ? 'rgba(16, 185, 129, 0.6)' : 'rgba(239, 68, 68, 0.6)';
+        g.strokeRect(bx + 0.5, chartTop + 4.5, pw - 1, 15);
+        g.fillStyle = tagCol;
+        g.fillText(lbl, bx + 6, chartTop + 15);
+      }
+      g.restore();
     }
   }
 }

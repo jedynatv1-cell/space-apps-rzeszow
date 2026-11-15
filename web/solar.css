@@ -131,8 +131,12 @@ svg .fill { fill: currentColor; stroke: none; }
 #left {
   position: absolute; top: 14px; left: 14px; width: 244px; max-height: calc(100vh - 28px);
   overflow-y: auto; border-radius: 8px; z-index: 9; padding: 14px 16px 14px;
+  scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
   transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), max-height 0.3s ease, opacity 0.25s;
 }
+#left::-webkit-scrollbar { width: 5px; }
+#left::-webkit-scrollbar-track { background: transparent; }
+#left::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 3px; }
 #left.collapsed { transform: translateX(calc(-100% + 42px)); max-height: 42px; overflow: hidden; }
 #left.collapsed .left-body { opacity: 0; pointer-events: none; }
 .left-body { transition: opacity 0.2s; }
@@ -198,6 +202,29 @@ svg .fill { fill: currentColor; stroke: none; }
 }
 .link:hover { background: rgba(56, 189, 248, 0.22); border-color: rgba(56, 189, 248, 0.6); }
 
+/* ---------- 3D telemetry & navigation exits in #left ---------- */
+.moon-summary {
+  font: 500 11px/1.4 var(--mono);
+  color: var(--text);
+  padding: 6px 9px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--faint);
+  margin-bottom: 7px;
+}
+.moon-summary .open-count { color: #34d399; font-weight: 600; }
+.nav-exits { display: flex; flex-direction: column; gap: 5px; }
+.exit-link {
+  display: flex; align-items: center; justify-content: space-between;
+  font: 500 11.5px/1 var(--sans); color: #e0f2fe;
+  padding: 6px 9px; border-radius: 4px;
+  background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.28);
+  text-decoration: none; transition: background 0.15s, border-color 0.15s;
+}
+.exit-link:hover {
+  background: rgba(56, 189, 248, 0.18); border-color: rgba(56, 189, 248, 0.55);
+}
+
 .credit { color: var(--muted); font-size: 11px; margin: 10px 0 0; line-height: 1.45; }
 
 .switch .key { width: 7px; height: 7px; border-radius: 2px; background: var(--c); margin-left: auto; }
@@ -213,6 +240,15 @@ svg .fill { fill: currentColor; stroke: none; }
   color: var(--text); font: 500 10.5px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
   display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95); opacity: 0.9;
+  pointer-events: none;
+}
+body.planet-hover .plabel-tag {
+  pointer-events: auto;
+  cursor: pointer;
+}
+body.planet-hover .plabel-tag:hover {
+  opacity: 1;
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.7);
 }
 .plabel-tag i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex: none; box-shadow: 0 0 6px currentColor; }
 .site { width: 24px; height: 24px; display: grid; place-items: center; cursor: pointer; pointer-events: auto; }
@@ -226,11 +262,15 @@ svg .fill { fill: currentColor; stroke: none; }
 
 /* ---------- architectural site inspection card (#card) ---------- */
 #card {
-  position: absolute; z-index: 8; width: 304px; border-radius: 8px; padding: 14px 16px;
+  position: absolute; z-index: 8; width: 318px; border-radius: 8px; padding: 11px 14px;
   background: var(--glass-strong); border-top: 2px solid var(--c);
   transform-origin: 50% 100%; transform: translate(-50%, calc(-100% - 14px));
   animation: card-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1); pointer-events: auto;
+  max-height: calc(100vh - 80px); overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
+#card::-webkit-scrollbar { width: 5px; }
+#card::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 3px; }
 @keyframes card-in { from { opacity: 0; transform: translate(-50%, calc(-100% - 8px)) scale(0.97); } }
 #card::after { display: none; }
 
@@ -248,13 +288,31 @@ svg .fill { fill: currentColor; stroke: none; }
 }
 #card dt { color: var(--muted); }
 #card dd { margin: 0; font: 400 12px/1.38 var(--sans); font-variant-numeric: tabular-nums; color: var(--text); }
+#card #card-date { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.win-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 7px; border-radius: 3px;
+  font: 600 10.5px/1.2 var(--mono); letter-spacing: 0.02em;
+}
+.win-pill i { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.win-pill.open { background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.45); color: #34d399; }
+.win-pill.open i { background: #10b981; box-shadow: 0 0 6px #10b981; }
+.win-pill.closed { background: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.45); color: #f87171; }
+.win-pill.closed i { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+#date-btn.win-open { background: rgba(16, 185, 129, 0.14); border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.5); }
+#date-btn.win-open #date-main { color: #34d399; }
+#date-btn.win-closed { background: rgba(239, 68, 68, 0.14); border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.5); }
+#date-btn.win-closed #date-main { color: #f87171; }
+.card-diagram { display: block; width: 100%; height: 62px; margin: 6px 0 3px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(5, 7, 12, 0.72); }
+.card-diag-note { font: 400 10px/1.2 var(--mono); color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 4px; }
 #card .cond dd { font-family: var(--mono); font-size: 11.5px; }
 
 #card .more { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.28s ease; }
 #card .more > div { overflow: hidden; }
 #card.open .more { grid-template-rows: 1fr; }
 #card .more p { margin: 10px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
-#card .actions { display: flex; gap: 8px; margin-top: 12px; }
+#card .actions { display: flex; gap: 8px; margin-top: 10px; }
+#card .actions button, #card .actions a { flex: 1; text-align: center; justify-content: center; }
 #card .actions [data-horizon] { background: var(--text); color: var(--bg); border-color: var(--text); font-weight: 600; }
 #card .actions [data-horizon]:hover { background: #e2e8f0; }
 #card .hint { margin-top: 10px; font: 500 10.5px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
@@ -262,6 +320,8 @@ svg .fill { fill: currentColor; stroke: none; }
 
 #card.below { transform: translate(-50%, 14px); transform-origin: 50% 0; animation-name: card-in-below; }
 @keyframes card-in-below { from { opacity: 0; transform: translate(-50%, 8px) scale(0.97); } }
+#card.dock-side { transform: none; transform-origin: 0 50%; animation: card-in-side 0.16s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes card-in-side { from { opacity: 0; transform: translateX(6px) scale(0.98); } }
 
 #card .sec {
   font: 600 10.5px/1 var(--sans); letter-spacing: 0.06em; text-transform: uppercase;

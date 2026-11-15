@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=20261115n">
+<link rel="stylesheet" href="app.css?v=20261115q">
 </head>
 <body>
 <header>
@@ -25,6 +25,7 @@
     </nav>
 
     <div class="header-actions">
+      <button type="button" id="tour-btn" class="tour-btn" title="Interactive mission guide (H)">Guide</button>
       <div class="mode" role="radiogroup" aria-label="Detail level">
         <button type="button" role="radio" data-mode="public" title="Plain-language mission readiness summary">Public</button>
         <button type="button" role="radio" data-mode="expert" title="Full telemetry, coordinates, and CSV export">Expert</button>
@@ -61,7 +62,7 @@
       </div>
 
       <div class="cmd-time">
-        <label>Start (UTC) <input id="start" type="datetime-local" value="2026-11-14T00:00"></label>
+        <label id="start-lbl"><span class="lbl-row">Start (UTC) <span id="start-win" class="win-tag"></span></span><input id="start" type="datetime-local" value="2026-11-14T00:00"></label>
         <label>Days <input id="days" type="number" step="any" min="1" max="400" value="30" class="num short"></label>
         <label class="expert">Step (m) <input id="step" type="number" step="any" min="1" value="60" class="num short"></label>
         <div class="slips" title="Shift start date">
@@ -84,6 +85,7 @@
   <div id="busy" role="status" hidden><span class="spin"></span> Computing topocentric ephemeris &amp; ray-marching LOLA DEM…</div>
 
   <section id="explore" data-only="explore">
+    <div id="moon3d-mount"></div>
     <div class="split">
       <!-- Left: Unified Sky & Horizon Canvas -->
       <div class="panel sky-wrap" id="pano-panel">
@@ -142,11 +144,13 @@
         </select>
         <input id="scrub" type="range" min="0" max="0" value="0" step="any" aria-label="Time">
         <output id="now">—</output>
+        <span id="now-win" class="win-tag"></span>
       </div>
     </div>
     <canvas id="timeline" data-only="explore"></canvas>
     <div id="cmp-bands" data-only="compare" hidden></div>
     <div class="legend expert timeline-legend" data-only="explore">
+      <span class="leg-item"><i class="sw sw-win"></i>Window open</span>
       <span class="leg-item"><i class="sw sw-sun"></i>Sunlit</span>
       <span class="leg-item"><i class="sw sw-earth"></i>Earth DTE</span>
       <span class="leg-item"><i class="sw sw-hz-line"></i>Ridge under Sun</span>
@@ -199,8 +203,6 @@
       </div>
       <table id="slips-table"></table>
     </div>
-
-    <div id="moon3d-mount"></div>
   </section>
 
   <section id="compare" data-only="compare" hidden>
@@ -231,9 +233,10 @@
   <span>Terrain: <strong id="hz-source">—</strong></span>
 </footer>
 
-<script src="sky.js?v=20261115n"></script>
-<script src="mock.js?v=20261115n"></script>
-<script src="app.js?v=20261115n"></script>
-<script src="embed3d.js?v=20261115n"></script>
+<script src="sky.js?v=20261115q"></script>
+<script src="mock.js?v=20261115q"></script>
+<script src="app.js?v=20261115q"></script>
+<script src="embed3d.js?v=20261115q"></script>
+<script src="tour.js?v=20261115q"></script>
 </body>
 </html>

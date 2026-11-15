@@ -6,6 +6,7 @@
 // The sky plot and metrics come from the Rust server (ANISE/DE440s); this file only drives the 3D scene.
 
 export const AU_KM = 149597870.7;
+export const EARTH_MOON_MASS_RATIO = 81.30057;
 const D2R = Math.PI / 180;
 
 // [a (AU), e, I, L, long.peri, long.node] and their rates per Julian century.
@@ -46,15 +47,24 @@ export const daysSinceJ2000 = ms => (ms - Date.UTC(2000, 0, 1, 12)) / 864e5;
 
 const norm360 = x => ((x % 360) + 360) % 360;
 
+/** Solved eccentric anomaly (radians) for planet elKey at epoch d. */
+export function solveE(elKey, d) {
+  const T = d / 36525, [el, rt] = ELEMENTS[elKey];
+  const e = el[1] + rt[1] * T;
+  const L = el[3] + rt[3] * T, wbar = el[4] + rt[4] * T;
+  let M = norm360(L - wbar); if (M > 180) M -= 360; M *= D2R;
+  let E = M + e * Math.sin(M);
+  for (let k = 0; k < 8; k++) E -= (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+  return E;
+}
+
 /** Heliocentric ecliptic J2000 position [x, y, z] in km. key: a planet or 'emb'. */
 export function planetHelio(key, d) {
   const T = d / 36525, [el, rt] = ELEMENTS[key];
   const a = el[0] + rt[0] * T, e = el[1] + rt[1] * T, I = (el[2] + rt[2] * T) * D2R;
-  const L = el[3] + rt[3] * T, wbar = el[4] + rt[4] * T, node = el[5] + rt[5] * T;
+  const wbar = el[4] + rt[4] * T, node = el[5] + rt[5] * T;
   const w = (wbar - node) * D2R, O = node * D2R;
-  let M = norm360(L - wbar); if (M > 180) M -= 360; M *= D2R;
-  let E = M + e * Math.sin(M);
-  for (let k = 0; k < 8; k++) E -= (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+  const E = solveE(key, d);
   const xp = a * (Math.cos(E) - e), yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
   const cw = Math.cos(w), sw = Math.sin(w), cO = Math.cos(O), sO = Math.sin(O), cI = Math.cos(I), sI = Math.sin(I);
   return [
@@ -65,20 +75,31 @@ export function planetHelio(key, d) {
 }
 
 /** Closed Keplerian orbit ellipse (km, ecliptic J2000) for planet key at epoch d. */
-export function planetOrbit(key, d, n = 360) {
-  const T = d / 36525, [el, rt] = ELEMENTS[key];
+export function planetOrbit(key, d, n = 1080) {
+  const elKey = key === 'earth' ? 'emb' : key;
+  const T = d / 36525, [el, rt] = ELEMENTS[elKey];
   const a = el[0] + rt[0] * T, e = el[1] + rt[1] * T, I = (el[2] + rt[2] * T) * D2R;
   const wbar = el[4] + rt[4] * T, node = el[5] + rt[5] * T;
   const w = (wbar - node) * D2R, O = node * D2R;
   const cw = Math.cos(w), sw = Math.sin(w), cO = Math.cos(O), sO = Math.sin(O), cI = Math.cos(I), sI = Math.sin(I);
   const b = Math.sqrt(1 - e * e);
+  const E0 = solveE(elKey, d);
+
+  let dx = 0, dy = 0, dz = 0;
+  if (key === 'earth') {
+    const mg = moonGeo(d), f = 1 / (1 + EARTH_MOON_MASS_RATIO);
+    dx = -mg[0] * f;
+    dy = -mg[1] * f;
+    dz = -mg[2] * f;
+  }
+
   const pts = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
-    const E = (2 * Math.PI * i) / n;
+    const E = E0 + (2 * Math.PI * i) / n;
     const xp = a * (Math.cos(E) - e), yp = a * b * Math.sin(E);
-    pts[i * 3]     = AU_KM * ((cw * cO - sw * sO * cI) * xp + (-sw * cO - cw * sO * cI) * yp);
-    pts[i * 3 + 1] = AU_KM * ((cw * sO + sw * cO * cI) * xp + (-sw * sO + cw * cO * cI) * yp);
-    pts[i * 3 + 2] = AU_KM * ((sw * sI) * xp + (cw * sI) * yp);
+    pts[i * 3]     = AU_KM * ((cw * cO - sw * sO * cI) * xp + (-sw * cO - cw * sO * cI) * yp) + dx;
+    pts[i * 3 + 1] = AU_KM * ((cw * sO + sw * cO * cI) * xp + (-sw * sO + cw * cO * cI) * yp) + dy;
+    pts[i * 3 + 2] = AU_KM * ((sw * sI) * xp + (cw * sI) * yp) + dz;
   }
   return pts;
 }
@@ -121,8 +142,6 @@ export function moonGeo(d) {
   const lat = (sb / 1e6) * D2R, r = 385000.56 + sr / 1000;
   return [r * Math.cos(lat) * Math.cos(lon), r * Math.cos(lat) * Math.sin(lon), r * Math.sin(lat)];
 }
-
-const EARTH_MOON_MASS_RATIO = 81.30057;
 
 /** Heliocentric positions (km, ecliptic J2000) of every body at day d. */
 export function allHelio(d) {
