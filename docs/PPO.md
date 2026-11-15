@@ -17,8 +17,10 @@ Training ran in two stages:
    negative position error versus JPL Horizons at every step, over 30-day episodes. The
    critic is asymmetric and best-on-validation checkpoints are selected.
 
-The ported model runs in pure Rust (`src/ppo.rs`). It is used only by the comparison
-endpoint `/api/ppo_check`; `/api/track` keeps using ANISE + DE440s.
+The ported model runs in pure Rust (`src/ppo.rs`). It serves the "Moon position X time
+from now" prediction (`/api/moon_predict`) and the NN-vs-DE440s comparison
+(`/api/ppo_check`); `/api/track` keeps using ANISE + DE440s. The PPO model is the default
+there and the base model can be selected.
 
 ## Data
 
@@ -45,7 +47,10 @@ start epochs:
 | PPO 30-day, `moon_nn_ppo30d.json` | 0.005 km | 0.025 km | 0.79 km | 5.90 km |
 
 PPO lowered the 30-day validation error from 7.27 to 5.44 km, but that gain did not carry
-over to the test years. The base model is therefore the primary one.
+over to the test years: on 2024–2027 the base model is slightly more accurate at every
+horizon (about 5% at 27 days). The team chose the PPO model as the website default because
+it is the reinforcement-learning result; the base model stays available as an option. (The
+file name `moon_nn_primary.json` predates that choice.)
 
 Seen from a lunar south-pole site over 30 days, the Earth and Sun directions agree with
 Horizons to within 0.004°. About 0.0008° of that comes from the network; the rest comes
