@@ -103,8 +103,8 @@ mod tests {
 
     #[test]
     fn rk4_keeps_a_circular_orbit() {
-        let mu = 403_503.0; // Earth + Moon GM, km^3/s^2
-        let r0 = 384_400.0;
+        let mu: f64 = 403_503.0; // Earth + Moon GM, km^3/s^2
+        let r0: f64 = 384_400.0;
         let v0 = (mu / r0).sqrt();
         let period = 2.0 * std::f64::consts::PI * (r0.powi(3) / mu).sqrt();
         let (r, v) = two_body_rk4([r0, 0.0, 0.0], [0.0, v0, 0.0], mu, period, 24 * 112);
@@ -118,8 +118,14 @@ mod tests {
     fn mlp_forward_with_silu() {
         let m = Mlp {
             layers: vec![
-                Layer { weight: vec![vec![1.0, -1.0], vec![0.5, 0.5]], bias: vec![0.0, 1.0] },
-                Layer { weight: vec![vec![2.0, 1.0]], bias: vec![-1.0] },
+                Layer {
+                    weight: vec![vec![1.0, -1.0], vec![0.5, 0.5]],
+                    bias: vec![0.0, 1.0],
+                },
+                Layer {
+                    weight: vec![vec![2.0, 1.0]],
+                    bias: vec![-1.0],
+                },
             ],
         };
         let y = m.forward(&[1.0, 1.0]);
