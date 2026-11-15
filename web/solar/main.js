@@ -4,8 +4,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import * as E from './ephem.js?v=20261115c';
-import { SITE_INFO } from './site-info.js?v=20261115c';
+import * as E from './ephem.js?v=20261115e';
+import { SITE_INFO } from './site-info.js?v=20261115e';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -357,6 +357,51 @@ const STATUS = { // [css class, label, left-panel category]
 };
 const statusOf = s => STATUS[s.status] || ['landed', s.status || '', 'hist'];
 
+// ---------- landing areas (candidate regions and planned missions) ----------
+// Candidate regions: NASA describes each Artemis region as roughly 15 x 15 km (docs/RESEARCH.md §9.1);
+// we draw that square around the proxy centre. Planned missions: no published ellipse, so an
+// illustrative 5 km radius circle. Both follow the LOLA surface and are depth-tested (far side hidden).
+const AREA = { cand: { half: 7.5, color: 0xffd84d }, planned: { radius: 5, color: 0xff9a1f } };
+const AREA_LIFT = 1.2; // km above the sampled LOLA height, so the patch stays above the coarser mesh
+
+function surfacePoint(n, east, north, de, dn) {
+  const v = n.clone().multiplyScalar(MOON_R).addScaledVector(east, de).addScaledVector(north, dn).normalize();
+  const lat = Math.asin(v.z) * 180 / Math.PI, lon = Math.atan2(v.y, v.x) * 180 / Math.PI;
+  return v.multiplyScalar(MOON_R + heightKm(lat, lon) + AREA_LIFT);
+}
+
+function makeArea(m) {
+  const spec = AREA[m.cat];
+  if (!spec) return null;
+  const n = m.normal, lon = Math.atan2(n.y, n.x), lat = Math.asin(n.z);
+  const east = new THREE.Vector3(-Math.sin(lon), Math.cos(lon), 0);
+  const north = new THREE.Vector3(-Math.sin(lat) * Math.cos(lon), -Math.sin(lat) * Math.sin(lon), Math.cos(lat));
+  const outline = [], fill = [];
+  if (spec.half) { // square, sampled along each edge so it hugs the terrain
+    const h = spec.half, k = 24, corners = [[-h, -h], [h, -h], [h, h], [-h, h], [-h, -h]];
+    for (let c = 0; c < 4; c++) for (let i = 0; i < k; i++) {
+      const t = i / k, [x0, y0] = corners[c], [x1, y1] = corners[c + 1];
+      outline.push(surfacePoint(n, east, north, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t));
+    }
+    const g = 12; // fill grid
+    for (let j = 0; j < g; j++) for (let i = 0; i < g; i++) {
+      const q = (a, b) => surfacePoint(n, east, north, -h + 2 * h * a / g, -h + 2 * h * b / g);
+      fill.push(q(i, j), q(i + 1, j), q(i + 1, j + 1), q(i, j), q(i + 1, j + 1), q(i, j + 1));
+    }
+  } else { // circle
+    const r = spec.radius, k = 96, c0 = surfacePoint(n, east, north, 0, 0);
+    const ring = i => surfacePoint(n, east, north, r * Math.cos(2 * Math.PI * i / k), r * Math.sin(2 * Math.PI * i / k));
+    for (let i = 0; i < k; i++) { outline.push(ring(i)); fill.push(c0, ring(i), ring(i + 1)); }
+  }
+  const group = new THREE.Group();
+  const lineGeo = new THREE.BufferGeometry().setFromPoints(outline);
+  group.add(new THREE.LineLoop(lineGeo, new THREE.LineBasicMaterial({ color: spec.color, transparent: true, opacity: 0.95, depthWrite: false })));
+  const fillGeo = new THREE.BufferGeometry().setFromPoints(fill);
+  group.add(new THREE.Mesh(fillGeo, new THREE.MeshBasicMaterial({ color: spec.color, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide })));
+  moonFrame.add(group);
+  return group;
+}
+
 function addSites(sites) {
   for (const s of sites) {
     const lat = s.lat_deg * Math.PI / 180, lon = s.lon_deg * Math.PI / 180;
@@ -370,6 +415,7 @@ function addSites(sites) {
     obj.position.copy(n).multiplyScalar(MOON_R + heightKm(s.lat_deg, s.lon_deg) + 0.3);
     moonFrame.add(obj);
     const m = { site: s, obj, el, normal: n, cat: statusOf(s)[2] };
+    m.area = makeArea(m);
     el.addEventListener('pointerenter', () => { if (!card.pinned) showCard(m); cancelHide(); });
     el.addEventListener('pointerleave', () => scheduleHide());
     // Pin on pointerdown, not click: markers are repositioned every frame, and if one shifts a pixel
@@ -410,6 +456,8 @@ function showCard(m) {
         <dt>Mission</dt><dd>${esc(s.mission.replace(/\s*\(.*\)$/, ''))}</dd>
         <dt>Date</dt><dd>${esc(fmtDate(info.date))}</dd>
         <dt>Location</dt><dd>${fmtLoc(s)}</dd>
+        ${m.cat === 'cand' ? '<dt>Area</dt><dd>~15 × 15 km NASA candidate region (square at the proxy centre)</dd>' : ''}
+        ${m.cat === 'planned' ? '<dt>Area</dt><dd>illustrative 5 km radius (no published landing ellipse)</dd>' : ''}
       </dl>
       <div class="more"><div>
         ${info.text ? `<p>${esc(info.text)}</p>` : ''}
@@ -419,7 +467,7 @@ function showCard(m) {
       <div class="hint">Click for details</div>`;
     c.querySelector('[data-fly]').onclick = e => {
       e.stopPropagation();
-      flyTo(m.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix)), Math.min(camera.position.length(), MOON_R * 2.2));
+      flyTo(m.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix)), Math.min(camera.position.length(), MOON_R + 150)); // ~150 km up: a 15 km landing area spans ~100 px
     };
     c.hidden = false;
     c.style.animation = 'none'; void c.offsetWidth; c.style.animation = '';
@@ -521,6 +569,7 @@ function updateMarkers() {
     const p = wn.clone().multiplyScalar(MOON_R);
     const toCam = camDir.clone().sub(p).normalize();
     m.obj.visible = near && cats[m.cat] && wn.dot(toCam) > 0.06; // far side and grazing limb hidden
+    if (m.area) m.area.visible = cats[m.cat]; // depth test hides areas on the far side
   }
   if (card.m && !card.m.obj.visible) hideCard(true);
   const labelsOn = $('opt-labels').checked;
