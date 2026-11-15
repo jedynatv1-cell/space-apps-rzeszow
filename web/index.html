@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lunar Landing Site Navigator</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="stylesheet" href="app.css?v=20261115c">
+<link rel="stylesheet" href="app.css?v=20261115j">
 </head>
 <body>
 <header>
   <div class="brand">
     <div class="brand-top">
-      <span class="kicker">LUNAR SOUTH POLE TELEMETRY &amp; HORIZON ANALYSIS</span>
+      <span class="kicker">LUNAR SOUTH POLE TELEMETRY · LRO LOLA DEM · NASA SPLICE HDA</span>
       <h1>Lunar Landing Site Navigator</h1>
     </div>
-    <p>Topocentric Sun &amp; Earth visibility against real LRO LOLA terrain — power budgets &amp; direct-to-Earth (DTE) windows.</p>
+    <p>Topocentric Sun &amp; Earth visibility against real LRO LOLA terrain — power budgets, direct-to-Earth (DTE) windows &amp; 500 m SPLICE divert analysis.</p>
   </div>
   <div class="header-actions">
     <a class="nav-pill" href="solar.html">
@@ -48,7 +48,7 @@
         <button type="button" role="tab" data-tab="compare" aria-selected="false">Compare sites</button>
       </nav>
       <div class="quick-actions" data-only="explore">
-        <button type="button" id="best" class="secondary" title="Search a 500 m radius (100 m grid) for the spot with the most sunlight">Best spot within 500 m</button>
+        <button type="button" id="best" class="secondary" title="NASA SPLICE HDA: search a 500 m divert radius (100 m grid) for the spot with the most sunlight">Best spot within 500 m</button>
         <button type="button" id="csv" class="secondary expert" title="Download full ephemeris and terrain horizon track as CSV">Export CSV ↓</button>
       </div>
     </div>
@@ -74,7 +74,86 @@
   <div id="err" role="alert"></div>
   <div id="busy" role="status" hidden><span class="spin"></span> Computing… the first request for a site loads its terrain and can take a few seconds.</div>
 
-  <!-- Timeline + playback, shared by both views. -->
+  <section id="explore" data-only="explore">
+    <div class="split">
+      <!-- Unified Sky & Horizon panel: Panorama (default) | Polar switch, shared cursor, both canvases in DOM. -->
+      <div class="panel sky-wrap" id="pano-panel">
+        <div class="sky-head">
+          <div class="sky-title-group">
+            <h2>Sky &amp; Horizon</h2>
+            <small id="pano-read">hover chart to inspect azimuth &amp; LOLA ridge elevation</small>
+          </div>
+          <div class="sky-controls">
+            <label class="inline expert" id="full-sky-label" hidden><input type="checkbox" id="full-sky"> Full sky (0–90°)</label>
+            <div class="chart-switch" id="sky-switch" role="radiogroup" aria-label="Chart projection">
+              <button type="button" role="radio" data-sky-view="pano" aria-checked="true">Panorama 360°</button>
+              <button type="button" role="radio" data-sky-view="polar" aria-checked="false">Polar Sky</button>
+            </div>
+          </div>
+        </div>
+        <div class="chart-stage">
+          <canvas id="pano" aria-label="360 degree horizon panorama"></canvas>
+          <canvas id="sky" hidden aria-label="Polar sky plot"></canvas>
+        </div>
+        <div class="chart-foot">
+          <p class="hint" id="pano-note"></p>
+          <div class="legend compact-legend">
+            <span class="sun">●━ Sun disk &amp; path</span>
+            <span class="earth">●━ Earth (DTE) &amp; libration</span>
+            <span class="hz">▓━ LOLA terrain mask</span>
+            <span class="cur">┃ Time / Az cursor</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="side">
+        <div class="panel" id="verdict" hidden></div>
+        <div class="panel" id="best-panel" hidden></div>
+        <div class="panel" id="readout"></div>
+        <div class="grid" id="metrics"></div>
+      </div>
+    </div>
+
+    <div id="moon3d-mount"></div>
+
+    <div class="panel" id="slips" hidden>
+      <div class="bp-head"><h2>If the landing slips</h2><small id="slips-note"></small></div>
+      <table id="slips-table"></table>
+      <p class="hint">Same site and window duration across delayed launch dates. Deltas relative to planned date; ★ = best date for each metric.</p>
+    </div>
+
+    <div class="panel splice-panel" id="splice-workflow">
+      <div class="bp-head">
+        <h2>NASA SPLICE · Safe &amp; Precise Landing Workflow</h2>
+        <a class="splice-link" href="https://www.nasa.gov/safe-and-precise-landing-integrated-capabilities-evolution-splice/" target="_blank" rel="noopener">NASA STMD SPLICE ↗</a>
+      </div>
+      <p class="hint splice-intro">Why a 500 m micro-relocation works in practice: NASA’s <strong>Safe and Precise Landing – Integrated Capabilities Evolution (SPLICE)</strong> suite autonomously maps surface hazards during descent and diverts the lander away from shadows, craters, and steep slopes.</p>
+      <div class="splice-steps">
+        <div class="splice-step">
+          <span class="splice-tag">01 · ORBIT → 10 KM</span>
+          <b>TRN · Terrain Relative Navigation</b>
+          <small>Onboard camera matches live descent photos against preloaded LROC &amp; LOLA orbital maps so the Descent &amp; Landing Computer (DLC) locks global coordinates.</small>
+        </div>
+        <div class="splice-step">
+          <span class="splice-tag">02 · 10 KM → 500 M</span>
+          <b>NDL · Navigation Doppler Lidar</b>
+          <small>Four fiber-coupled laser telescopes measure line-of-sight velocity and altitude with centimeter-per-second precision, replacing legacy radar altimetry.</small>
+        </div>
+        <div class="splice-step">
+          <span class="splice-tag">03 · ~500 M AGL</span>
+          <b>HDL + HDS · 3D Hazard &amp; Lighting Scan</b>
+          <small>Hazard Detection Lidar scans the landing zone into a real-time 3D DEM; Hazard Detection Software (HDS) scores safe, sunlit ridges within the 500 m divert footprint.</small>
+        </div>
+        <div class="splice-step">
+          <span class="splice-tag">04 · DIVERT → TOUCHDOWN</span>
+          <b>DQG · Dual Quaternion Guidance</b>
+          <small>Adaptive minimum-fuel guidance retargets the vehicle in real time to the optimal candidate spot (modeled above via <em>Best spot within 500 m</em>).</small>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Master timeline + playback control, directly under Sky & Horizon (in Explore) and Compare strips (in Compare). -->
   <section class="panel" id="timeline-panel">
     <div class="play">
       <button type="button" id="play" aria-label="Play">▶</button>
@@ -90,44 +169,29 @@
     <canvas id="timeline" data-only="explore"></canvas>
     <div id="cmp-bands" data-only="compare" hidden></div>
     <div class="legend expert" data-only="explore">
-      <span class="sun">━ Sun elevation</span><span class="earth">━ Earth elevation</span>
-      <span class="hz">━ Horizon under Sun</span><span class="hz">┅ Horizon under Earth</span>
+      <span class="sun">━ Sun elevation &amp;SUN band</span>
+      <span class="earth">━ Earth elevation &amp; DTE band</span>
+      <span class="hz">━ Horizon under Sun</span>
+      <span class="hz">┅ Horizon under Earth</span>
       <span>Bands: brightness = visible disk fraction</span>
     </div>
   </section>
 
-  <section id="explore" data-only="explore">
-    <div class="split">
-      <div class="panel sky-wrap">
-        <div class="sky-head">
-          <h2>Sky from the site</h2>
-          <label class="inline expert"><input type="checkbox" id="full-sky"> Full sky (0–90°)</label>
-        </div>
-        <canvas id="sky"></canvas>
-        <p class="hint expert">Zenith at centre, north up, east right. Radial scale auto-zooms to the Sun &amp; Earth elevation band; grey marks occluding LOLA terrain. Disks drawn to true angular scale.</p>
-      </div>
-      <div class="side">
-        <div class="panel" id="verdict" hidden></div>
-        <div class="panel" id="best-panel" hidden></div>
-        <div class="panel" id="readout"></div>
-        <div class="grid" id="metrics"></div>
-      </div>
-    </div>
-    <div class="panel" id="pano-panel">
-      <div class="bp-head"><h2>360° Horizon Panorama</h2><small id="pano-read">hover to inspect azimuth &amp; ridge elevation</small></div>
-      <canvas id="pano" aria-label="360 degree horizon panorama"></canvas>
-      <p class="hint" id="pano-note"></p>
-    </div>
-    <div class="panel" id="slips" hidden>
-      <div class="bp-head"><h2>If the landing slips</h2><small id="slips-note"></small></div>
-      <table id="slips-table"></table>
-      <p class="hint">Same site and window duration across delayed launch dates. Deltas relative to planned date; ★ = best date for each metric.</p>
-    </div>
-  </section>
-
   <section id="compare" data-only="compare" hidden>
-    <div class="cmp-cols" id="cmp-cols"></div>
-    <div class="panel">
+    <div class="panel cmp-charts-panel">
+      <div class="sky-head">
+        <div class="sky-title-group">
+          <h2>Multi-Site Horizon &amp; Sky Comparison</h2>
+          <small id="cmp-read">shared 0°–360° azimuth axis · hover to compare ridge occlusion across sites</small>
+        </div>
+        <div class="chart-switch" id="cmp-switch" role="radiogroup" aria-label="Comparison chart projection">
+          <button type="button" role="radio" data-cmp-view="pano" aria-checked="true">Stacked Panoramas</button>
+          <button type="button" role="radio" data-cmp-view="polar" aria-checked="false">Polar Sky</button>
+        </div>
+      </div>
+      <div class="cmp-cols pano-stack" id="cmp-cols"></div>
+    </div>
+    <div class="panel cmp-table-panel">
       <h2>Side-by-side comparison</h2>
       <table id="cmp-table"></table>
       <p class="hint">★ = optimal site among compared candidates for that metric.</p>
@@ -140,9 +204,9 @@
   <span>Horizon model: <strong id="hz-source">—</strong></span>
 </footer>
 
-<script src="sky.js?v=20261115c"></script>
-<script src="mock.js?v=20261115c"></script>
-<script src="app.js?v=20261115c"></script>
-<script src="embed3d.js?v=20261115i"></script>
+<script src="sky.js?v=20261115j"></script>
+<script src="mock.js?v=20261115j"></script>
+<script src="app.js?v=20261115j"></script>
+<script src="embed3d.js?v=20261115j"></script>
 </body>
 </html>

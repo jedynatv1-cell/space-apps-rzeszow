@@ -4,8 +4,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import * as E from './ephem.js?v=20261115i';
-import { SITE_INFO } from './site-info.js?v=20261115i';
+import * as E from './ephem.js?v=20261115j';
+import { SITE_INFO } from './site-info.js?v=20261115j';
 
 const $ = id => document.getElementById(id);
 // Embed mode (solar.html?embed=1): shown inside a panel on index.html. Settings start collapsed and

@@ -12,6 +12,9 @@ const state = {
   mode: localStorage.getItem('navMode') || 'expert', // 'public' | 'expert'
   sites: [],
   view: 'explore',
+  skyView: 'pano',  // 'pano' | 'polar' (Panorama default per chart redesign)
+  cmpView: 'pano',  // 'pano' | 'polar' (Stacked panoramas default in Compare)
+  hoverAz: null,    // shared azimuth cursor (deg, 0..360)
   data: null,       // explore: one /api/track response
   cmp: [],          // compare: [{ site, data }]
   idx: 0,           // current point index (float while playing)
@@ -32,6 +35,8 @@ function initServer() {
   if (q.has('days')) $('days').value = q.get('days');
   if (q.has('step')) $('step').value = q.get('step');
   if (q.has('mode')) state.mode = q.get('mode');
+  if (q.get('focus') === 'sky') state.skyView = 'polar';
+  if (q.get('focus') === 'pano') state.skyView = 'pano';
   state.link = q;
   state.api = (q.get('api') ?? localStorage.getItem('navApi') ?? '').replace(/\/$/, '');
   $('api').value = state.api;
@@ -237,11 +242,13 @@ function render() {
 function renderExplore(i) {
   const d = state.data, p = d.points[i];
   $('now').textContent = fmtTime(p.t);
-  drawSky($('sky'), d, state.idx, { full: $('full-sky').checked });
+  drawSky($('sky'), d, state.idx, { full: $('full-sky').checked, hoverAz: state.hoverAz });
   drawTimeline($('timeline'), d, state.idx);
-  state.pano = drawPanorama($('pano'), d, state.idx);
-  $('pano-note').textContent = `Grey = terrain skyline from ${d.horizon.source}${d.horizon.ground_m != null ? ` (ground ${Math.round(d.horizon.ground_m)} m)` : ''}. ` +
-    `Lines = Sun and Earth paths over the window, disks = now. Vertical scale stretched about ×${Math.max(1, Math.round(state.pano.exaggeration))}.`;
+  state.pano = drawPanorama($('pano'), d, state.idx, { hoverAz: state.hoverAz });
+  const groundTxt = d.horizon.ground_m != null ? ` (ground ${Math.round(d.horizon.ground_m)} m)` : '';
+  $('pano-note').textContent = state.skyView === 'polar'
+    ? `Polar projection: zenith at centre, north up, east right. Terrain mask from ${d.horizon.source}${groundTxt}; disks drawn to true angular scale.`
+    : `360° skyline from ${d.horizon.source}${groundTxt}. Vertical scale stretched ×${Math.max(1, Math.round(state.pano.exaggeration || 1))} so low polar elevations and Earth's libration loop are clear.`;
   $('hz-source').textContent = d.horizon.source;
 
   const count = (key, cls, setWord, riseWord) => {
@@ -291,8 +298,6 @@ const sunEvt = s => startEvent(s, 'hours_to_sunset', 'next_sunset', 'hours_to_su
 const earthEvt = s => startEvent(s, 'hours_to_earthset', 'next_earthset', 'hours_to_earthrise', 'next_earthrise', 'Earthset', 'Earthrise');
 
 // Traffic-light thresholds from docs/RESEARCH.md §9.1 (team synthesis from Barker 2021, VIPER, Gläser 2014).
-// Interim rule (L1, pending L4's revised thresholds): the verdict uses Sun % and Earth % only; over a
-// month-long window the longest night almost always exceeds 120 h, so it is shown as information.
 const VERDICT = [
   { name: 'Sunlight', pub: 'Sunlight', v: s => s.sun_visible_pct, good: v => v >= 70, ok: v => v >= 50, show: v => fmt(v, 0, '%') },
   { name: 'Earth in view', pub: 'Can talk to Earth', v: s => s.earth_visible_pct, good: v => v >= 50, ok: v => v >= 30, show: v => fmt(v, 0, '%') },
@@ -301,7 +306,6 @@ const VERDICT = [
 ];
 const RANK = { good: 0, marginal: 1, poor: 2 };
 const VERDICT_WORD = { good: 'Good site', marginal: 'Marginal site', poor: 'Poor site' };
-// Plain-language facts for public mode (docs/RESEARCH.md §9.2).
 const FACTS = [
   'The Moon’s axis tilts just 1.54°, so at the poles the Sun always skims the horizon.',
   'One lunar day-night cycle lasts 29.53 Earth days.',
@@ -318,7 +322,6 @@ function renderVerdict(s) {
     return { c, v, cls };
   });
   const worst = rows.filter(r => !r.c.info).reduce((a, r) => (RANK[r.cls] > RANK[a] ? r.cls : a), 'good');
-  // Same site always gets the same fact.
   const factIdx = Math.abs(Math.round(+$('lat').value * 1000 + +$('lon').value * 7)) % FACTS.length;
   const pub = state.mode === 'public';
   const short = +$('days').value < 29.5;
@@ -434,15 +437,17 @@ function renderBest(r) {
     ['Longest night', 'longest_night_hours', v => fmt(v, 0, ' h'), -1],
     ['Ground height', 'ground_m', v => fmt(v, 0, ' m'), 0],
   ];
-  el.innerHTML = `<div class="bp-head"><h2>Best spot within ${fmt(r.radius_m, 0)} m</h2><small>${r.candidates_evaluated} spots checked</small></div>
+  const dir = same ? '' : bearing(c, b);
+  el.innerHTML = `<div class="bp-head"><h2>Best spot within ${fmt(r.radius_m, 0)} m</h2><small>${r.candidates_evaluated} spots checked · SPLICE HDA</small></div>
     ${same ? '<p>The selected site is already the best spot in this radius.</p>' : `
-    <p>${fmt(b.distance_m, 0)} m ${bearing(c, b)} of the site: ${fmt(b.lat_deg, 4)}°, ${fmt(b.lon_deg, 4)}°E</p>
+    <p class="best-vector"><strong>SPLICE DQG Divert Vector:</strong> ${fmt(b.distance_m, 0)} m ${dir} of target (${fmt(b.lat_deg, 4)}°, ${fmt(b.lon_deg, 4)}°E)</p>
     <table><tr><th></th><th>Site</th><th>Best spot</th><th>Change</th></tr>
-    ${rows.map(([name, k, f, dir]) => {
-      const d = b[k] - c[k], cls = dir && Math.abs(d) > 1e-9 ? ((d > 0) === (dir > 0) ? 'up' : 'down') : '';
+    ${rows.map(([name, k, f, dSign]) => {
+      const d = b[k] - c[k], cls = dSign && Math.abs(d) > 1e-9 ? ((d > 0) === (dSign > 0) ? 'up' : 'down') : '';
       const dTxt = k === 'sun_mean_fraction' ? fmt(d * 100, 1, ' pts') : k.endsWith('pct') ? fmt(d, 1, ' pts') : fmt(d, 0, k === 'ground_m' ? ' m' : ' h');
       return `<tr><td>${name}</td><td>${f(c[k])}</td><td>${f(b[k])}</td><td class="${cls}">${d > 0 ? '+' : ''}${dTxt}</td></tr>`;
     }).join('')}</table>
+    <div class="splice-mini"><span>TRN Fix</span> → <span>NDL Lock</span> → <span>HDL/HDS 3D DEM Scan</span> → <span>DQG Divert (${fmt(b.distance_m, 0)} m ${dir})</span></div>
     <div class="bp-actions"><button type="button" id="use-best">Use this spot</button></div>`}`;
   el.hidden = false;
   const use = $('use-best');
@@ -451,25 +456,57 @@ function renderBest(r) {
 
 function renderCompare(i) {
   const cols = $('cmp-cols'), bands = $('cmp-bands');
-  const key = state.cmp.map(c => c.site.name).join('|') + state.req;
+  const isPano = state.cmpView === 'pano';
+  cols.classList.toggle('pano-stack', isPano);
+  const key = state.cmp.map(c => c.site.name).join('|') + '|' + state.cmpView + '|' + state.req;
   if (cols.dataset.for !== key) {
     cols.dataset.for = key;
     cols.innerHTML = state.cmp.map((c, k) => `<div class="panel cmp-col">
-        <h3>${esc(siteLabel(c.site))}</h3>
-        <div class="sub">${esc(shortMission(c.site))} · ${fmt(c.site.lat_deg, 3)}°, ${fmt(c.site.lon_deg, 3)}°E</div>
-        <canvas data-k="${k}"></canvas><div class="now"></div></div>`).join('');
+        <div class="cmp-col-head">
+          <div>
+            <h3>${esc(siteLabel(c.site))}</h3>
+            <div class="sub">${esc(shortMission(c.site))} · ${fmt(c.site.lat_deg, 3)}°, ${fmt(c.site.lon_deg, 3)}°E</div>
+          </div>
+          <div class="now"></div>
+        </div>
+        <canvas data-k="${k}"></canvas></div>`).join('');
     bands.innerHTML = state.cmp.map((c, k) =>
       `<div class="cmp-band"><span title="${esc(c.site.name)}">${esc(siteLabel(c.site))}</span><canvas data-k="${k}"></canvas></div>`).join('');
     bands.querySelectorAll('canvas').forEach(attachScrub);
+    cols.querySelectorAll('canvas').forEach(c => {
+      c.addEventListener('pointermove', e => {
+        const L = c._panoLayout;
+        if (!L) return;
+        const r = c.getBoundingClientRect(), az = (e.clientX - r.left - L.left) / L.xs;
+        if (az < 0 || az > 360) return;
+        state.hoverAz = az;
+        const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        const parts = state.cmp.map(x => `${x.site.name.replace(/\s*\(.*$/, '')}: ${horizonAt(x.data.horizon, az).toFixed(1)}°`);
+        if ($('cmp-read')) $('cmp-read').textContent = `az ${az.toFixed(1)}° (${dirs[Math.round(az / 45) % 8]}) · ridge ${parts.join(' · ')}`;
+        render();
+      });
+      c.addEventListener('pointerleave', () => {
+        if (state.hoverAz == null) return;
+        state.hoverAz = null;
+        if ($('cmp-read')) $('cmp-read').textContent = 'shared 0°–360° azimuth axis · hover to compare ridge occlusion across sites';
+        render();
+      });
+    });
     renderCmpTable();
   }
   const p0 = state.cmp[0].data.points[i];
   $('now').textContent = fmtTime(p0.t);
-  // One shared radial scale so the sites are visually comparable.
-  const range = skyRange(state.cmp.map(c => c.data), false);
+  const datas = state.cmp.map(c => c.data);
+  const sRange = skyRange(datas, false);
+  const pRange = typeof panoRange === 'function' ? panoRange(datas) : null;
   cols.querySelectorAll('.cmp-col').forEach((el, k) => {
-    const d = state.cmp[k].data, p = d.points[i];
-    drawSky(el.querySelector('canvas'), d, state.idx, { range, compact: true });
+    const d = state.cmp[k].data, p = d.points[i], cv = el.querySelector('canvas');
+    if (isPano) {
+      cv._panoLayout = drawPanorama(cv, d, state.idx, { range: pRange, compact: true, hoverAz: state.hoverAz });
+    } else {
+      cv._panoLayout = null;
+      drawSky(cv, d, state.idx, { range: sRange, compact: true, hoverAz: state.hoverAz });
+    }
     el.querySelector('.now').innerHTML =
       `<span style="color:var(--sun)">Sun</span> ${fmt(p.sun.el_deg, 2)}°, ${visWord(p.sun_vis)} · ` +
       `<span style="color:var(--earth)">Earth</span> ${fmt(p.earth.el_deg, 2)}°, ${visWord(p.earth_vis)}`;
@@ -521,6 +558,24 @@ function pause() { state.playing = false; $('play').textContent = '▶'; $('play
 
 // ---------- wiring ----------
 
+function setSkyView(view) {
+  state.skyView = view === 'polar' ? 'polar' : 'pano';
+  document.querySelectorAll('[data-sky-view]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.skyView === state.skyView)));
+  $('pano').hidden = state.skyView !== 'pano';
+  $('sky').hidden = state.skyView !== 'polar';
+  if ($('full-sky-label')) $('full-sky-label').hidden = state.skyView !== 'polar';
+  render();
+  requestAnimationFrame(render);
+}
+
+function setCmpView(view) {
+  state.cmpView = view === 'polar' ? 'polar' : 'pano';
+  document.querySelectorAll('[data-cmp-view]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.cmpView === state.cmpView)));
+  $('cmp-cols').dataset.for = '';
+  render();
+  requestAnimationFrame(render);
+}
+
 function setMode(mode) {
   state.mode = mode === 'public' ? 'public' : 'expert';
   localStorage.setItem('navMode', state.mode);
@@ -556,11 +611,15 @@ async function start() {
       document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === 'compare')));
       document.querySelectorAll('[data-only]').forEach(el => { el.hidden = el.dataset.only !== 'compare'; });
     }
+    setSkyView(state.skyView);
     await run();
-    const focus = { slips: 'slips', pano: 'pano-panel', sky: 'sky' }[link?.get('focus')];
+    const focusParam = link?.get('focus');
+    if (focusParam === 'sky') setSkyView('polar');
+    if (focusParam === 'pano') setSkyView('pano');
+    const focus = { slips: 'slips', pano: 'pano-panel', sky: 'pano-panel' }[focusParam];
     if (focus) { // the slip panel loads after the main view, so wait until the target is shown
       const t0 = Date.now(), tick = () => {
-        if ($(focus).offsetParent) $(focus).scrollIntoView({ block: 'start' });
+        if ($(focus)?.offsetParent) $(focus).scrollIntoView({ block: 'start' });
         else if (Date.now() - t0 < 8000) setTimeout(tick, 150);
       };
       tick();
@@ -576,6 +635,8 @@ function wire() {
   $('best').onclick = findBest;
   if ($('csv')) $('csv').onclick = downloadCsv;
   document.querySelectorAll('[data-mode]').forEach(b => (b.onclick = () => setMode(b.dataset.mode)));
+  document.querySelectorAll('[data-sky-view]').forEach(b => (b.onclick = () => setSkyView(b.dataset.skyView)));
+  document.querySelectorAll('[data-cmp-view]').forEach(b => (b.onclick = () => setCmpView(b.dataset.cmpView)));
   setMode(state.mode);
   const syncCustom = () => document.body.classList.toggle('custom', $('site').value === '');
   $('site').addEventListener('change', syncCustom);
@@ -598,12 +659,34 @@ function wire() {
     if (!d || !L) return;
     const r = $('pano').getBoundingClientRect(), az = (e.clientX - r.left - L.left) / L.xs;
     if (az < 0 || az > 360) return;
+    state.hoverAz = az;
     const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
     $('pano-read').textContent = `az ${az.toFixed(1)}° (${dirs[Math.round(az / 45) % 8]}) · horizon ${horizonAt(d.horizon, az).toFixed(2)}°`;
+    render();
+  });
+  $('pano').addEventListener('pointerleave', () => {
+    if (state.hoverAz == null) return;
+    state.hoverAz = null;
+    render();
+  });
+  $('sky').addEventListener('pointermove', e => {
+    const d = state.data;
+    if (!d) return;
+    const r = $('sky').getBoundingClientRect();
+    const dx = e.clientX - (r.left + r.width / 2), dy = (r.top + r.height / 2) - e.clientY;
+    const az = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+    state.hoverAz = az;
+    const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    $('pano-read').textContent = `az ${az.toFixed(1)}° (${dirs[Math.round(az / 45) % 8]}) · horizon ${horizonAt(d.horizon, az).toFixed(2)}°`;
+    render();
+  });
+  $('sky').addEventListener('pointerleave', () => {
+    if (state.hoverAz == null) return;
+    state.hoverAz = null;
+    render();
   });
   document.addEventListener('keydown', e => {
     if (e.target.matches('input, select, textarea')) return;
-    // A focused button would also "click" on Space/Enter; drop focus so only our shortcut runs.
     if (e.target.matches('button')) e.target.blur();
     if (e.key === ' ') { e.preventDefault(); state.playing ? pause() : play(); }
     if (e.key === 'ArrowRight') setIdx(Math.round(state.idx) + (e.shiftKey ? 24 : 1));

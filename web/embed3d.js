@@ -4,12 +4,12 @@
 'use strict';
 
 (() => {
-  const V = '20261115i';
+  const V = '20261115j';
 
   function build() {
     const css = document.createElement('style');
     css.textContent = `
-      #moon3d-panel { margin-top: 16px; }
+      #moon3d-panel { margin-top: 0; }
       #moon3d-panel .m3-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
       #moon3d-panel .m3-head a { font-size: 12px; color: var(--accent, #4ea1ff); text-decoration: none; }
       #moon3d-panel iframe { display: block; width: 100%; height: min(520px, 70vh); border: 0; border-radius: 10px; background: #02030a; }
