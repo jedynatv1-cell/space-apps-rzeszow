@@ -4,8 +4,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import * as E from './ephem.js?v=20261115f';
-import { SITE_INFO } from './site-info.js?v=20261115f';
+import * as E from './ephem.js?v=20261115h';
+import { SITE_INFO } from './site-info.js?v=20261115h';
 
 const $ = id => document.getElementById(id);
 // Embed mode (solar.html?embed=1): shown inside a panel on index.html. Settings start collapsed and
@@ -365,7 +365,8 @@ const statusOf = s => STATUS[s.status] || ['landed', s.status || '', 'hist'];
 // we draw that square around the proxy centre. Planned missions: no published ellipse, so an
 // illustrative 5 km radius circle. Both follow the LOLA surface and are depth-tested (far side hidden).
 const AREA = { cand: { half: 7.5, color: 0xffd84d }, planned: { radius: 5, color: 0xff9a1f } };
-const AREA_LIFT = 1.2; // km above the sampled LOLA height, so the patch stays above the coarser mesh
+const AREA_LIFT = 1.2;
+const areaMeshes = []; // km above the sampled LOLA height, so the patch stays above the coarser mesh
 
 function surfacePoint(n, east, north, de, dn) {
   const v = n.clone().multiplyScalar(MOON_R).addScaledVector(east, de).addScaledVector(north, dn).normalize();
@@ -400,7 +401,10 @@ function makeArea(m) {
   const lineGeo = new THREE.BufferGeometry().setFromPoints(outline);
   group.add(new THREE.LineLoop(lineGeo, new THREE.LineBasicMaterial({ color: spec.color, transparent: true, opacity: 0.95, depthWrite: false })));
   const fillGeo = new THREE.BufferGeometry().setFromPoints(fill);
-  group.add(new THREE.Mesh(fillGeo, new THREE.MeshBasicMaterial({ color: spec.color, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide })));
+  const fillMesh = new THREE.Mesh(fillGeo, new THREE.MeshBasicMaterial({ color: spec.color, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }));
+  fillMesh.userData.site = m; // the whole patch is hoverable/clickable (raycast below)
+  areaMeshes.push(fillMesh);
+  group.add(fillMesh);
   moonFrame.add(group);
   return group;
 }
@@ -445,6 +449,57 @@ function fmtDate(iso) {
 }
 const fmtLoc = s => `${Math.abs(s.lat_deg).toFixed(2)}°${s.lat_deg < 0 ? 'S' : 'N'}, ${Math.abs(s.lon_deg).toFixed(2)}°${s.lon_deg < 0 ? 'W' : 'E'}`;
 
+// "Why here": only statements already in site-info.js (no invented facts).
+function whyHtml(m, info) {
+  let items = [];
+  if (m.cat === 'cand') {
+    items = ['Long sunlit periods for solar power', 'Direct line of sight to Earth for radio contact',
+      'Near permanently shadowed craters that may hold water ice'];
+  } else if (info.text) {
+    items = info.text.split(/(?<=\.)\s+|;\s+/).map(t => t.replace(/\.$/, '')).filter(Boolean).slice(0, 3);
+  }
+  if (!items.length) return '';
+  const title = m.cat === 'hist' ? 'About this landing' : 'Why here';
+  return `<div class="why"><div class="sec">${title}</div><ul>${items.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`;
+}
+
+// Live conditions from our server (same numbers as the analysis page), fetched on first hover, cached.
+const condCache = new Map();
+// Same server choice as the analysis page: ?api=… or the saved address, else this page's server.
+const API_BASE = (new URLSearchParams(location.search).get('api') ?? localStorage.getItem('navApi') ?? '').replace(/\/$/, '');
+function condUrl(s) {
+  const start = new Date(state.t).toISOString().slice(0, 10);
+  return { key: `${s.lat_deg},${s.lon_deg},${start}`, url: `${API_BASE}/api/track?${new URLSearchParams({ lat: s.lat_deg, lon: s.lon_deg, start, days: 30, step_min: 60 })}` };
+}
+const fmtDur = h => (h == null ? '—' : h < 48 ? `${Math.round(h)} h` : `${Math.floor(h / 24)} d ${Math.round(h % 24)} h`);
+function verdictOf(sum) { // interim rule shared with the analysis page: Sun % and Earth %
+  const rank = v => (v >= 70 ? 0 : v >= 50 ? 1 : 2), rankE = v => (v >= 50 ? 0 : v >= 30 ? 1 : 2);
+  const r = Math.max(rank(sum.sun_visible_pct), rankE(sum.earth_visible_pct));
+  return [['good', 'Good site'], ['marginal', 'Marginal site'], ['poor', 'Poor site']][r];
+}
+function condHtml(sum) {
+  const [vcls, vword] = verdictOf(sum);
+  const setFirst = sum.hours_to_sunset != null && (sum.hours_to_sunrise == null || sum.hours_to_sunset < sum.hours_to_sunrise);
+  const next = setFirst ? `Sunset in ${fmtDur(sum.hours_to_sunset)}` : sum.hours_to_sunrise != null ? `Sunrise in ${fmtDur(sum.hours_to_sunrise)}` : 'No sunrise/sunset in window';
+  return `<div class="verdict ${vcls}"><i></i>${vword} <small>for a solar-powered lander</small></div>
+    <dl><dt>Sunlight</dt><dd>${(+sum.sun_visible_pct).toFixed(0)}% of the time</dd>
+    <dt>Earth in view</dt><dd>${(+sum.earth_visible_pct).toFixed(0)}% (direct radio link)</dd>
+    <dt>Longest night</dt><dd>${fmtDur(sum.longest_night_hours)}</dd>
+    <dt>Next</dt><dd>${next}</dd></dl>`;
+}
+async function loadConditions(m) {
+  const { key, url } = condUrl(m.site);
+  const body = () => (card.m === m ? $('card').querySelector('.cond-body') : null);
+  try {
+    if (!condCache.has(key)) condCache.set(key, fetch(url).then(r => (r.ok ? r.json() : Promise.reject(new Error(r.status)))));
+    const data = await condCache.get(key);
+    if (body()) body().innerHTML = condHtml(data.summary);
+  } catch {
+    condCache.delete(key);
+    if (body()) body().textContent = 'Live conditions need the analysis server.';
+  }
+}
+
 function showCard(m) {
   const s = m.site, [cls, label] = statusOf(s), info = SITE_INFO[s.mission] || {};
   const c = $('card');
@@ -459,15 +514,18 @@ function showCard(m) {
         <dt>Mission</dt><dd>${esc(s.mission.replace(/\s*\(.*\)$/, ''))}</dd>
         <dt>Date</dt><dd>${esc(fmtDate(info.date))}</dd>
         <dt>Location</dt><dd>${fmtLoc(s)}</dd>
-        ${m.cat === 'cand' ? '<dt>Area</dt><dd>~15 × 15 km NASA candidate region (square at the proxy centre)</dd>' : ''}
+        ${m.cat === 'cand' ? '<dt>Area</dt><dd>~15 × 15 km NASA candidate region (shaded on the surface)</dd>' : ''}
         ${m.cat === 'planned' ? '<dt>Area</dt><dd>illustrative 5 km radius (no published landing ellipse)</dd>' : ''}
       </dl>
+      ${whyHtml(m, info)}
+      <div class="cond"><div class="sec">Conditions, next 30 days</div><div class="cond-body">Computing…</div></div>
       <div class="more"><div>
         ${info.text ? `<p>${esc(info.text)}</p>` : ''}
         ${s.coord_note ? `<p>${esc(s.coord_note)}</p>` : ''}
         <div class="actions"><button class="text" data-fly>Fly to site</button><a class="text" data-horizon href="index.html?lat=${s.lat_deg}&lon=${s.lon_deg}">${EMBED ? 'Analyse this site ↑' : 'Horizon →'}</a></div>
       </div></div>
       <div class="hint">Click for details</div>`;
+    loadConditions(m);
     if (EMBED) c.querySelector('[data-horizon]').onclick = e => {
       e.preventDefault(); e.stopPropagation();
       // Same-origin parent (index.html) applies the site to the analysis form.
@@ -501,9 +559,14 @@ function positionCard() {
   const W = view.clientWidth, H = view.clientHeight, cw = c.offsetWidth || 280, ch = c.offsetHeight || 160;
   const x = (_v.x + 1) / 2 * W, y = (1 - _v.y) / 2 * H;
   // Keep the card on screen: clamp horizontally, and flip below the marker if it would be cut off at the top.
+  // On narrow screens, or when it fits neither above nor below, show it as a bottom sheet that scrolls.
+  const above = y - ch - 16 >= 8, below = y + ch + 16 <= H;
+  const sheet = W < 600 || (!above && !below);
+  c.classList.toggle('sheet', sheet);
+  if (sheet) { c.style.left = ''; c.style.top = ''; return; }
   c.style.left = `${Math.max(cw / 2 + 8, Math.min(W - cw / 2 - 8, x))}px`;
   c.style.top = `${y}px`;
-  c.classList.toggle('below', y - ch - 16 < 8);
+  c.classList.toggle('below', !above);
 }
 
 // ---------- camera moves ----------
@@ -581,10 +644,12 @@ function updateMarkers() {
     const wn = m.normal.clone().applyMatrix4(rot);
     const p = wn.clone().multiplyScalar(MOON_R);
     const toCam = camDir.clone().sub(p).normalize();
-    m.obj.visible = near && cats[m.cat] && wn.dot(toCam) > 0.06; // far side and grazing limb hidden
+    m.facing = wn.dot(toCam) > 0.06; // far side and grazing limb
+    const closeUp = m.area && dist < MOON_R + 800; // the shaded area is the landing zone up close
+    m.obj.visible = near && cats[m.cat] && m.facing && !closeUp;
     if (m.area) m.area.visible = cats[m.cat]; // depth test hides areas on the far side
   }
-  if (card.m && !card.m.obj.visible) hideCard(true);
+  if (card.m && !(card.m.facing && cats[card.m.cat])) hideCard(true);
   const labelsOn = $('opt-labels').checked;
   for (const key of ['sun', ...PLANETS]) bodies[key].label.visible = labelsOn;
   bodies.moon.label.visible = labelsOn && dist > MOON_R * 40;
@@ -675,7 +740,35 @@ function wirePanels() {
   c.addEventListener('pointerenter', cancelHide);
   c.addEventListener('pointerleave', scheduleHide);
   c.addEventListener('click', e => { e.stopPropagation(); card.pinned = true; c.classList.add('open'); });
-  renderer.domElement.addEventListener('click', () => { hideCard(true); togglePicker(false); });
+  // Hover and click on the shaded landing areas themselves (not only on the dot).
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  let areaHover = null, down = null, pending = false;
+  const hitArea = (x, y) => {
+    const r = renderer.domElement.getBoundingClientRect();
+    ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects(areaMeshes.filter(a => a.parent.visible), false)[0];
+    return hit ? hit.object.userData.site : null;
+  };
+  renderer.domElement.addEventListener('pointermove', e => {
+    if (pending || e.buttons) return; // throttle; ignore while dragging the camera
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      const m = hitArea(e.clientX, e.clientY);
+      if (m && !card.pinned) { showCard(m); cancelHide(); }
+      else if (!m && areaHover && !card.pinned) scheduleHide();
+      areaHover = m;
+      renderer.domElement.style.cursor = m ? 'pointer' : '';
+    });
+  });
+  renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener('click', e => {
+    const moved = down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5; // a camera drag, not a click
+    const m = moved ? null : hitArea(e.clientX, e.clientY);
+    if (m) { showCard(m); card.pinned = true; $('card').classList.add('open'); return; }
+    if (!moved) { hideCard(true); togglePicker(false); }
+  });
   document.addEventListener('keydown', e => {
     if (e.target.matches?.('input, select, textarea')) return;
     if (e.key === ' ') { e.preventDefault(); if (e.target.matches?.('button')) e.target.blur(); setPlaying(!state.playing); }
