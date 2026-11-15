@@ -48,8 +48,8 @@ start epochs:
 
 PPO lowered the 30-day validation error from 7.27 to 5.44 km, but that gain did not carry
 over to the test years: on 2024–2027 the base model is slightly more accurate at every
-horizon (about 5% at 27 days). The team chose the PPO model as the website default because
-it is the reinforcement-learning result; the base model stays available as an option. (The
+horizon (about 5% at 27 days). The team chose the PPO model as the website default; the base
+model stays available as an option. (The
 file name `moon_nn_primary.json` predates that choice.)
 
 Seen from a lunar south-pole site over 30 days, the Earth and Sun directions agree with
