@@ -5,7 +5,7 @@
 //! Like Horizons, elevation is relative to the plane tangent to the 1737.4 km sphere:
 //! terrain is handled separately by `horizon`.
 
-use anise::constants::frames::{EARTH_J2000, MOON_ME_DE440_ME421_FRAME, SUN_J2000};
+use anise::constants::frames::{EARTH_J2000, MOON_J2000, MOON_ME_DE440_ME421_FRAME, SUN_J2000};
 use anise::math::Vector3;
 use anise::prelude::*;
 use serde::Serialize;
@@ -58,6 +58,31 @@ impl Ephem {
             self.body(site, epoch, SUN_J2000, SUN_RADIUS_KM)?,
             self.body(site, epoch, EARTH_J2000, EARTH_RADIUS_KM)?,
         ))
+    }
+
+    /// Geometric geocentric Moon state in J2000 (EME2000): position km, velocity km/s.
+    /// Reference for the learned ephemeris check (`ppo`).
+    pub fn moon_geocentric_j2000(
+        &self,
+        epoch: Epoch,
+    ) -> Result<(Vector3, Vector3), Box<dyn std::error::Error>> {
+        let st = self
+            .almanac
+            .transform(MOON_J2000, EARTH_J2000, epoch, Aberration::NONE)?;
+        Ok((st.radius_km, st.velocity_km_s))
+    }
+
+    /// Unit vector of a site's local vertical, expressed in J2000 axes.
+    pub fn site_up_j2000(
+        &self,
+        site: &Site,
+        epoch: Epoch,
+    ) -> Result<Vector3, Box<dyn std::error::Error>> {
+        let dcm = self
+            .almanac
+            .rotate(MOON_ME_DE440_ME421_FRAME, EARTH_J2000, epoch)?;
+        let (lat, lon) = (site.lat_deg.to_radians(), site.lon_deg.to_radians());
+        Ok(dcm * Vector3::new(lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()))
     }
 
     fn body(
@@ -137,5 +162,35 @@ mod tests {
         let north = topocentric(&site, Vector3::new(site.radius_km(), 0.0, 1.0e6), 1.0);
         assert!(north.az_deg.abs() < 1e-3 || (north.az_deg - 360.0).abs() < 1e-3);
         assert!(north.el_deg.abs() < 0.1);
+    }
+
+    /// The J2000 path used by the PPO check (geocentric Moon state + site vertical) must
+    /// reproduce the Moon-fixed path of `body` for the Earth as seen from a site.
+    #[test]
+    fn j2000_path_matches_moon_fixed_path() {
+        if !kernels_present() {
+            eprintln!("skipping: kernels missing");
+            return;
+        }
+        let e = Ephem::load(KERNEL_DIR).unwrap();
+        let site = Site::new(-89.45, -129.78, 0.0).unwrap();
+        for t in [
+            Epoch::from_gregorian_utc_at_midnight(2026, 11, 14),
+            Epoch::from_gregorian_utc(2027, 3, 2, 7, 30, 0, 0),
+        ] {
+            let (r, v) = e.moon_geocentric_j2000(t).unwrap();
+            assert!((356_000.0..407_000.0).contains(&r.norm()), "{}", r.norm());
+            assert!((0.9..1.1).contains(&v.norm()), "{}", v.norm());
+            let up = e.site_up_j2000(&site, t).unwrap();
+            let d = -r - up * site.radius_km();
+            let el = (d.dot(&up) / d.norm()).asin().to_degrees();
+            let st = e
+                .almanac
+                .transform(EARTH_J2000, MOON_ME_DE440_ME421_FRAME, t, Aberration::NONE)
+                .unwrap();
+            let want = topocentric(&site, st.radius_km, EARTH_RADIUS_KM);
+            assert!((el - want.el_deg).abs() < 1e-6, "{el} vs {}", want.el_deg);
+            assert!((d.norm() - want.distance_km).abs() < 1e-3);
+        }
     }
 }
