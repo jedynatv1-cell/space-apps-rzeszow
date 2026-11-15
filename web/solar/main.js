@@ -4,8 +4,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import * as E from './ephem.js?v=20261115b';
-import { SITE_INFO } from './site-info.js?v=20261115b';
+import * as E from './ephem.js?v=20261115c';
+import { SITE_INFO } from './site-info.js?v=20261115c';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
