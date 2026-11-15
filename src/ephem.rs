@@ -62,6 +62,7 @@ impl Ephem {
 
     /// Geometric geocentric Moon state in J2000 (EME2000): position km, velocity km/s.
     /// Reference for the learned ephemeris check (`ppo`).
+    #[allow(dead_code)] // TODO(PPO): used by /api/ppo_check
     pub fn moon_geocentric_j2000(
         &self,
         epoch: Epoch,
@@ -73,6 +74,7 @@ impl Ephem {
     }
 
     /// Unit vector of a site's local vertical, expressed in J2000 axes.
+    #[allow(dead_code)] // TODO(PPO): used by /api/ppo_check
     pub fn site_up_j2000(
         &self,
         site: &Site,
