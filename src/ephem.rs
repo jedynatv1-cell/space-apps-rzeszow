@@ -119,7 +119,7 @@ mod tests {
         let site = Site::new(-89.45, -129.78, 0.0).unwrap();
         let epoch = Epoch::from_gregorian_utc_at_midnight(2026, 11, 14);
         let (sun, earth) = eph.sun_earth(&site, epoch).unwrap();
-        let close = |a: f64, b: f64| (a - b).abs() < 0.01;
+        let close = |a: f64, b: f64| (a - b).abs() < 0.001;
         assert!(close(sun.az_deg, 256.383540), "sun az {}", sun.az_deg);
         assert!(close(sun.el_deg, 1.427188), "sun el {}", sun.el_deg);
         assert!(close(earth.az_deg, 128.518220), "earth az {}", earth.az_deg);
