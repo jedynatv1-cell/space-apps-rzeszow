@@ -45,23 +45,16 @@
 
   // ---------- UI ----------
   const CSS = `
-  #predict-panel { margin-top: 16px; }
-  #predict-panel .pr-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-  #predict-panel .pr-tag { font-size: 11px; color: var(--muted, #8b93a7); letter-spacing: .04em; }
-  #predict-panel .pr-controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; margin: 10px 0; }
-  #predict-panel .pr-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted, #8b93a7); }
-  #predict-panel input[type=range] { width: min(360px, 70vw); }
-  #predict-panel input[type=number] { width: 90px; }
-  #predict-panel .pr-seg { display: inline-flex; border: 1px solid #2c3548; border-radius: 999px; padding: 2px; }
-  #predict-panel .pr-seg button { border: 0; background: transparent; color: var(--muted, #8b93a7); border-radius: 999px; padding: 4px 12px; font-size: 12px; cursor: pointer; }
-  #predict-panel .pr-seg button[aria-checked="true"] { background: #1f2937; color: var(--text, #e6e9ef); }
-  #predict-panel table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
-  #predict-panel th, #predict-panel td { padding: 5px 8px; border-bottom: 1px solid var(--line, #222a3a); text-align: right; }
-  #predict-panel th:first-child, #predict-panel td:first-child { text-align: left; color: var(--muted, #8b93a7); font-weight: normal; }
-  #predict-panel .pr-err { color: #ffb000; }
-  #predict-panel .pr-sum { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
-  #predict-panel .pr-sum b { font-size: 18px; font-variant-numeric: tabular-nums; }
-  #predict-panel .pr-msg { color: var(--muted, #8b93a7); font-size: 12px; min-height: 1em; }
+  #predict-panel { margin-top: 8px; }
+  #predict-panel .pr-controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin: 8px 0; }
+  #predict-panel .pr-controls label { display: flex; flex-direction: column; gap: 4px; font: 600 9.5px/1 var(--mono); color: var(--muted, #8b9bb4); text-transform: uppercase; letter-spacing: 0.08em; }
+  #predict-panel input[type=range] { width: min(340px, 65vw); height: 5px; padding: 0; appearance: none; -webkit-appearance: none; background: #182235; border: 1px solid var(--line-strong, #2a3752); border-radius: 2px; cursor: pointer; }
+  #predict-panel input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 16px; background: var(--earth, #38bdf8); border: 1px solid #fff; border-radius: 1px; }
+  #predict-panel input[type=number] { width: 84px; }
+  #predict-panel .pr-err { color: var(--warn, #f59e0b); font-weight: 600; }
+  #predict-panel .pr-sum { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line, #1b2436); font: 500 11.5px/1.3 var(--mono); }
+  #predict-panel .pr-sum b { font-size: 16px; font-variant-numeric: tabular-nums; margin-left: 4px; }
+  #predict-panel .pr-msg { color: var(--muted, #8b9bb4); font: 500 11px/1.3 var(--mono); min-height: 1em; }
   #predict-panel .pr-wrap { overflow-x: auto; }`;
 
   const fmt = (v, d) => (v == null || Number.isNaN(+v) ? '—' : (+v).toFixed(d));
@@ -72,16 +65,21 @@
     const sec = document.createElement('section');
     sec.className = 'panel'; sec.id = 'predict-panel'; sec.hidden = true;
     sec.innerHTML = `
-      <div class="pr-head"><h2>Moon position predictor (neural network)</h2><span class="pr-tag">${esc(LABEL)}</span></div>
+      <div class="inst-bar">
+        <div class="inst-title">
+          <span class="inst-code">INST-NN</span>
+          <h2>Moon Position Predictor (Neural Network vs JPL DE440s)</h2>
+          <span class="inst-readout">${esc(LABEL)}</span>
+        </div>
+        <div class="chart-switch pr-seg" role="radiogroup" aria-label="Model">
+          <button type="button" role="radio" data-model="ppo" aria-checked="true">PPO 30-Day</button>
+          <button type="button" role="radio" data-model="base" aria-checked="false">Base RK4+MLP</button>
+        </div>
+      </div>
       <div class="pr-controls">
-        <label>Time ahead: <span id="pr-days-lbl">7 days</span>
+        <label>Propagation Horizon: <span id="pr-days-lbl">7 days</span>
           <input id="pr-range" type="range" min="0" max="120" step="0.25" value="7"></label>
         <label>Days <input id="pr-days" type="number" min="0" max="120" step="any" value="7"></label>
-        <div><div class="pr-tag" style="margin-bottom:4px">Model</div>
-          <div class="pr-seg" role="radiogroup" aria-label="Model">
-            <button type="button" role="radio" data-model="ppo" aria-checked="true">PPO 30-day</button>
-            <button type="button" role="radio" data-model="base" aria-checked="false">Base</button>
-          </div></div>
       </div>
       <div class="pr-msg" id="pr-msg"></div>
       <div class="pr-wrap"><table id="pr-table"></table></div>
