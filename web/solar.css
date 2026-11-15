@@ -7,6 +7,8 @@
   --glass: rgba(10, 14, 22, 0.82);
   --glass-strong: rgba(11, 15, 23, 0.94);
   --edge: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.12);
+  --chip: rgba(255, 255, 255, 0.03);
   --hover: rgba(255, 255, 255, 0.06);
   --accent: #38bdf8;
   --landed: #10b981;
@@ -19,6 +21,7 @@
 [data-theme="light"] {
   --bg: #dde2ea; --text: #111722; --muted: rgba(17, 23, 34, 0.65); --faint: rgba(17, 23, 34, 0.14);
   --glass: rgba(255, 255, 255, 0.72); --glass-strong: rgba(255, 255, 255, 0.92); --edge: rgba(17, 23, 34, 0.12);
+  --border: rgba(17, 23, 34, 0.14); --chip: rgba(17, 23, 34, 0.04);
   --hover: rgba(17, 23, 34, 0.06); --accent: #0284c7;
   --landed: #0f9d62; --planned: #c98200; --lost: #d93a3a; --cand: #ca8a04;
 }
@@ -191,6 +194,21 @@ svg .fill { fill: currentColor; stroke: none; }
   border-color: rgba(56, 189, 248, 0.6);
   color: #e0f2fe;
 }
+.sim-launch-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-btn {
+  flex: 1 1 120px; min-height: 28px; padding: 5px 10px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--chip);
+  font: 500 11.5px/1.2 var(--sans); color: var(--text); text-align: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.chip-btn:hover { background: var(--hover); border-color: rgba(56, 189, 248, 0.45); }
+.chip-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chip-btn.active {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #e0f2fe;
+}
+[data-theme="light"] .chip-btn.active { color: #0369a1; }
 
 .link {
   display: flex; align-items: center; justify-content: center; width: 100%; margin-top: 12px;
@@ -236,11 +254,13 @@ svg .fill { fill: currentColor; stroke: none; }
   width: 0; height: 0; position: relative; pointer-events: none;
 }
 .plabel-tag {
-  position: absolute; left: -3px; top: 0; transform: translateY(-50%);
+  position: absolute; left: -10px; top: 0; transform: translateY(-50%);
+  padding: 3px 7px; border-radius: 4px;
   color: var(--text); font: 500 10.5px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
   display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95); opacity: 0.9;
   pointer-events: none;
+  transition: opacity 0.15s ease, text-shadow 0.15s ease;
 }
 body.planet-hover .plabel-tag {
   pointer-events: auto;
@@ -263,15 +283,14 @@ body.planet-hover .plabel-tag:hover {
 /* ---------- architectural site inspection card (#card) ---------- */
 #card {
   position: absolute; z-index: 8; width: 318px; border-radius: 8px; padding: 11px 14px;
-  background: var(--glass-strong); border-top: 2px solid var(--c);
+  background: var(--glass-strong); border-top: 2px solid var(--c, var(--accent));
   transform-origin: 50% 100%; transform: translate(-50%, calc(-100% - 14px));
-  animation: card-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1); pointer-events: auto;
+  animation: none; pointer-events: auto;
   max-height: calc(100vh - 80px); overflow-y: auto;
   scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 #card::-webkit-scrollbar { width: 5px; }
 #card::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 3px; }
-@keyframes card-in { from { opacity: 0; transform: translate(-50%, calc(-100% - 8px)) scale(0.97); } }
 #card::after { display: none; }
 
 #card .status {
@@ -318,10 +337,8 @@ body.planet-hover .plabel-tag:hover {
 #card .hint { margin-top: 10px; font: 500 10.5px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 #card.open .hint { display: none; }
 
-#card.below { transform: translate(-50%, 14px); transform-origin: 50% 0; animation-name: card-in-below; }
-@keyframes card-in-below { from { opacity: 0; transform: translate(-50%, 8px) scale(0.97); } }
-#card.dock-side { transform: none; transform-origin: 0 50%; animation: card-in-side 0.16s cubic-bezier(0.2, 0.8, 0.2, 1); }
-@keyframes card-in-side { from { opacity: 0; transform: translateX(6px) scale(0.98); } }
+#card.below { transform: translate(-50%, 14px); transform-origin: 50% 0; animation: none; }
+#card.dock-side { transform: none; transform-origin: 0 50%; animation: none; }
 
 #card .sec {
   font: 600 10.5px/1 var(--sans); letter-spacing: 0.06em; text-transform: uppercase;
@@ -337,8 +354,110 @@ body.planet-hover .plabel-tag:hover {
 #card .verdict.good { --v: var(--landed); } #card .verdict.marginal { --v: var(--planned); } #card .verdict.poor { --v: var(--lost); }
 
 @media (max-width: 600px) { #card { width: min(304px, calc(100vw - 24px)); } }
-#card.sheet { position: fixed; left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 62vh; overflow-y: auto; transform: none; animation: sheet-in 0.2s ease; }
-@keyframes sheet-in { from { opacity: 0; transform: translateY(10px); } }
+#card.sheet { position: fixed; left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 62vh; overflow-y: auto; transform: none; animation: none; }
+
+/* ---------- 3D spacecraft landing simulation HUD (#sim-hud) ---------- */
+#sim-hud {
+  position: fixed; top: 12px; right: 12px;
+  width: min(332px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px); overflow-y: auto;
+  z-index: 6; padding: 11px 12px; border-radius: 12px;
+  color: var(--text); font-size: 11px;
+  scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.sim-head {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 8px; min-width: 0;
+}
+.sim-badge {
+  flex: none; padding: 2px 6px; border-radius: 4px;
+  font: 600 10px/1.2 var(--mono); letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--accent); background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.35); white-space: nowrap;
+}
+[data-theme="light"] .sim-badge { background: rgba(2, 132, 199, 0.12); border-color: rgba(2, 132, 199, 0.35); }
+.sim-site {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 600 12px/1.2 var(--sans); color: var(--text);
+}
+.sim-close {
+  flex: none; width: 22px; height: 22px; border-radius: 4px; display: grid; place-items: center;
+  color: var(--muted); font-size: 12px; line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.sim-close:hover { background: var(--hover); color: var(--text); }
+.sim-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.sim-controls {
+  display: flex; align-items: center; gap: 5px; margin-bottom: 7px;
+}
+.sim-btn {
+  flex: none; height: 24px; min-width: 24px; padding: 0 7px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--chip);
+  color: var(--text); font: 500 11px/1 var(--sans);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.sim-btn:hover { background: var(--hover); border-color: rgba(56, 189, 248, 0.45); }
+.sim-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sim-btn.primary {
+  width: 24px; padding: 0;
+  background: var(--text); color: var(--bg); border-color: var(--text); font-weight: 600;
+}
+.sim-btn.primary:hover { opacity: 0.9; }
+#sim-reset { width: 24px; padding: 0; }
+.sim-btn.active {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #e0f2fe;
+}
+[data-theme="light"] .sim-btn.active { color: #0369a1; }
+#sim-scrub {
+  flex: 1 1 56px; min-width: 44px; height: 18px; margin: 0;
+  accent-color: var(--accent); cursor: pointer;
+}
+.sim-t {
+  flex: none; min-width: 46px; text-align: right;
+  font: 500 10.5px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--muted);
+}
+
+.sim-phases {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-bottom: 7px;
+}
+.sim-phases button {
+  height: 22px; padding: 0 4px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--chip);
+  font: 500 10px/1 var(--mono); letter-spacing: 0.02em; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.sim-phases button:hover { background: var(--hover); color: var(--text); border-color: rgba(56, 189, 248, 0.4); }
+.sim-phases button.active,
+.sim-phases button[aria-pressed="true"] {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.65);
+  color: var(--text);
+}
+
+.sim-metrics {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px;
+}
+.sim-metrics > div {
+  padding: 5px 6px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--chip); min-width: 0;
+}
+.sim-metrics span {
+  display: block; font: 600 9px/1 var(--mono); letter-spacing: 0.06em;
+  color: var(--muted); margin-bottom: 3px;
+}
+.sim-metrics b {
+  display: block; font: 600 11px/1.15 var(--mono); font-variant-numeric: tabular-nums;
+  color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+#sim-diagram {
+  width: 100%; height: 142px; display: block; border-radius: 7px;
+  border: 1px solid var(--border); background: rgba(7, 11, 20, 0.85); margin-top: 7px;
+}
 
 /* subtle embed mode navigation hint */
 .embed-hint {
@@ -349,3 +468,17 @@ body.planet-hover .plabel-tag:hover {
   color: var(--muted); font: 400 11px/1.2 var(--sans);
 }
 body.embed .embed-hint { display: block; }
+body.embed #sim-hud {
+  width: 318px; max-width: calc(100vw - 16px);
+  top: 8px; right: 8px; padding: 8px 10px; max-height: calc(100vh - 16px);
+}
+body.embed .sim-phases button { font-size: 9.5px; }
+body.embed .sim-metrics b { font-size: 10.5px; }
+
+@media (max-width: 600px) {
+  #sim-hud,
+  body.embed #sim-hud {
+    top: auto; bottom: 8px; left: 8px; right: 8px;
+    width: auto; max-width: none; max-height: 46vh; overflow-y: auto;
+  }
+}

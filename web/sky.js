@@ -36,12 +36,28 @@ function setupCanvas(c) {
   return { g, w, h };
 }
 
+/** Normalize terrain horizon masks across demo (`elev_deg`/`az_step_deg`) and Rust API (`el_deg`/`step_deg`). */
+function normMask(mask) {
+  if (!mask || typeof mask !== 'object') return { elev_deg: [0], az_step_deg: 360, source: '—' };
+  if (Array.isArray(mask.elev_deg) && mask.elev_deg.length > 0 && Number.isFinite(mask.az_step_deg) && mask.az_step_deg > 0) return mask;
+  const elev_deg = (Array.isArray(mask.elev_deg) && mask.elev_deg.length > 0)
+    ? mask.elev_deg
+    : (Array.isArray(mask.el_deg) && mask.el_deg.length > 0 ? mask.el_deg : [0]);
+  const az_step_deg = (Number.isFinite(mask.az_step_deg) && mask.az_step_deg > 0)
+    ? mask.az_step_deg
+    : ((Number.isFinite(mask.step_deg) && mask.step_deg > 0) ? mask.step_deg : 360 / elev_deg.length);
+  mask.elev_deg = elev_deg;
+  mask.az_step_deg = az_step_deg;
+  return mask;
+}
+
 /** Horizon elevation (deg) at an azimuth, linearly interpolated from the 720-sample mask. */
 function horizonAt(mask, az) {
-  const n = mask.elev_deg.length;
-  const x = (((az % 360) + 360) % 360) / mask.az_step_deg;
+  const m = normMask(mask);
+  const n = m.elev_deg.length;
+  const x = (((az % 360) + 360) % 360) / m.az_step_deg;
   const i = Math.floor(x) % n, j = (i + 1) % n, f = x - Math.floor(x);
-  return mask.elev_deg[i] * (1 - f) + mask.elev_deg[j] * f;
+  return m.elev_deg[i] * (1 - f) + m.elev_deg[j] * f;
 }
 
 /**
@@ -51,7 +67,7 @@ function skyRange(datas, full) {
   if (full) return { lo: -5, hi: 90 };
   let lo = -1, hi = 2, tMin = 0;
   for (const d of datas) {
-    for (const e of d.horizon.elev_deg) tMin = Math.min(tMin, e);
+    for (const e of normMask(d.horizon).elev_deg) tMin = Math.min(tMin, e);
     for (const p of d.points) {
       if (p.sun.el_deg > -3) hi = Math.max(hi, p.sun.el_deg + p.sun.radius_deg);
       if (p.earth.el_deg > -3) hi = Math.max(hi, p.earth.el_deg + p.earth.radius_deg);
@@ -65,7 +81,7 @@ function skyRange(datas, full) {
 function panoRange(datas) {
   let tMin = Infinity, tMax = -Infinity, bMax = 2;
   for (const d of datas) {
-    for (const e of d.horizon.elev_deg) { tMin = Math.min(tMin, e); tMax = Math.max(tMax, e); }
+    for (const e of normMask(d.horizon).elev_deg) { tMin = Math.min(tMin, e); tMax = Math.max(tMax, e); }
     for (const p of d.points) {
       for (const b of [p.sun, p.earth]) {
         if (b.el_deg > tMin - 3) bMax = Math.max(bMax, b.el_deg + b.radius_deg);
@@ -174,7 +190,7 @@ function drawSky(canvas, data, idx, opts = {}) {
   if (p) { body(p.earth, COLORS.earth, false); body(p.sun, COLORS.sun, true); }
 
   // Terrain: everything between the horizon line and the rim, with engineering hatch.
-  const mask = data.horizon, n = mask.elev_deg.length;
+  const mask = normMask(data.horizon), n = mask.elev_deg.length;
   g.save();
   g.beginPath();
   for (let i = 0; i <= n; i++) {
@@ -440,7 +456,7 @@ function drawPanorama(canvas, data, idx, opts = {}) {
   const { g, w, h } = setupCanvas(canvas);
   const compact = !!opts.compact;
   const left = 42, right = 10, top = compact ? 14 : 18, bottom = compact ? 18 : 20;
-  const mask = data.horizon, pts = data.points, n = mask.elev_deg.length;
+  const mask = normMask(data.horizon), pts = data.points, n = mask.elev_deg.length;
   const range = opts.range || panoRange([data]);
   const lo = range.lo, hi = range.hi;
   const W = w - left - right, H = h - top - bottom;

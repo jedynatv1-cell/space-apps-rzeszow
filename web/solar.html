@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
-<link rel="stylesheet" href="solar.css?v=20261115q">
+<link rel="stylesheet" href="solar.css?v=20261115s">
 <script>
 // Three.js 0.170.0: vendored copy in web/vendor/three (works offline); CDN only if it is missing.
 // Must run before any module script, so the import map is built synchronously here.
@@ -90,6 +90,13 @@
         </div>
       </div>
       <div class="group">
+        <div class="label">3D Landing Sim</div>
+        <div class="sim-launch-row">
+          <button id="sim-toggle" class="chip-btn" type="button">Launch Spacecraft Sim</button>
+          <button id="sim-cam-follow" class="chip-btn" type="button" hidden>Follow craft</button>
+        </div>
+      </div>
+      <div class="group">
         <div class="label">3D Telemetry &amp; Exits</div>
         <div id="moon-summary" class="moon-summary">Calculating site windows…</div>
         <div class="nav-exits">
@@ -105,9 +112,36 @@
 
   <!-- Site card: shown above the hovered marker, expands on click. -->
   <div id="card" class="glass" role="dialog" aria-live="polite" hidden></div>
+  <aside id="sim-hud" class="glass" hidden aria-label="Spacecraft landing simulation">
+    <div class="sim-head">
+      <span class="sim-badge" id="sim-phase-badge">01 · TRN</span>
+      <strong class="sim-site" id="sim-site-name">—</strong>
+      <button type="button" class="sim-close" id="sim-close" aria-label="Close landing simulation" title="Close simulation">✕</button>
+    </div>
+    <div class="sim-controls">
+      <button type="button" id="sim-play" class="sim-btn primary" aria-label="Play or pause simulation">▶</button>
+      <button type="button" id="sim-reset" class="sim-btn" title="Restart descent" aria-label="Restart descent">↺</button>
+      <button type="button" id="sim-follow-btn" class="sim-btn active" title="Toggle follow camera">Follow</button>
+      <input id="sim-scrub" type="range" min="0" max="1" step="0.002" value="0" aria-label="Descent progress">
+      <span class="sim-t" id="sim-t">T+000s</span>
+    </div>
+    <div class="sim-phases" id="sim-phases">
+      <button type="button" data-sim-u="0.08" data-phase="TRN">01 TRN</button>
+      <button type="button" data-sim-u="0.38" data-phase="NDL">02 NDL</button>
+      <button type="button" data-sim-u="0.68" data-phase="HDL">03 HDL</button>
+      <button type="button" data-sim-u="0.90" data-phase="DQG">04 DQG</button>
+    </div>
+    <div class="sim-metrics" id="sim-metrics">
+      <div><span>ALT</span><b id="sim-m-alt">—</b></div>
+      <div><span>VEL</span><b id="sim-m-vel">—</b></div>
+      <div><span>PITCH</span><b id="sim-m-pitch">—</b></div>
+      <div><span>THR</span><b id="sim-m-throt">—</b></div>
+    </div>
+    <canvas id="sim-diagram" width="320" height="126" aria-label="Glide slope and velocity descent diagram"></canvas>
+  </aside>
   <div class="embed-hint">Drag to rotate · Scroll to zoom · Click any landing zone to inspect</div>
 </main>
 
-<script type="module" src="solar/main.js?v=20261115q"></script>
+<script type="module" src="solar/main.js?v=20261115s"></script>
 </body>
 </html>
