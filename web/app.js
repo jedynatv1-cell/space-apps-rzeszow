@@ -86,7 +86,10 @@ async function api(path) {
   if (state.recorded) return recorded(path);
   if (state.demo) return Mock.handle(path);
   let r;
-  try { r = await fetch(state.api + path); } catch {
+  try {
+    const ms = path.startsWith('/api/best_nearby') ? 15000 : 8000;
+    r = await fetch(state.api + path, { signal: AbortSignal.timeout(ms) });
+  } catch {
     throw new Error(`Cannot reach the server at ${state.api || location.origin}. Set the server URL (top right) or use demo data.`);
   }
   const body = await r.json().catch(() => null);
