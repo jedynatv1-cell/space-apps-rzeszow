@@ -8,6 +8,7 @@ mod dem;
 mod ephem;
 mod horizon;
 mod metrics;
+mod ppo;
 mod site;
 
 use std::sync::Arc;
