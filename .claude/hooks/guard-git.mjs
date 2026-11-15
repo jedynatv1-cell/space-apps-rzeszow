@@ -15,7 +15,7 @@ const rules = [
   [/\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f|checkout\s+--\s+\.|restore\s+\.)/, "discards uncommitted work (maybe another agent's)"],
   [/\bgit\s+stash\b/, "stash hides changes from the other agents; commit to your branch instead"],
   [/\bgit\s+(rebase|add)\s+-i\b/, "interactive git does not work in agent sessions"],
-  [/\bgit\s+add\b[^\n;&|]*(data\/raw|data\\raw|\s-f\b|\s--force\b)/, "data/raw is git-ignored on purpose (~620 MB)"],
+  [/\bgit\s+add\b[^\n;&|]*(data[\/\\]raw(?![\/\\]kernels)|\s-f\b|\s--force\b)/, "data/raw (DEMs, ~580 MB) is git-ignored on purpose; only data/raw/kernels/ is committed"],
   [/\bgit\s+commit\b[^\n;&|]*--no-verify\b/, "hooks must not be skipped"],
 ];
 for (const [re, why] of rules) {
