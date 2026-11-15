@@ -10,14 +10,14 @@ const COLORS = {
   terrain: '#1e293b',
   terrainDeep: '#090d16',
   terrainEdge: '#94a3b8',
-  terrainHatch: 'rgba(148, 163, 184, 0.09)',
-  grid: 'rgba(148, 163, 184, 0.11)',
-  zero: 'rgba(148, 163, 184, 0.48)',
-  frame: '#26344d',
-  label: '#8b9bb4',
-  cardinal: '#e2e8f0',
-  sky: '#0a1120',
-  skyEdge: '#04070d',
+  terrainHatch: 'rgba(148, 163, 184, 0.052)',
+  grid: 'rgba(255, 255, 255, 0.065)',
+  zero: 'rgba(255, 255, 255, 0.28)',
+  frame: 'rgba(255, 255, 255, 0.1)',
+  label: '#7c8ba4',
+  cardinal: '#cbd5e1',
+  sky: '#080e18',
+  skyEdge: '#05070c',
   cursor: '#f8fafc',
 };
 const MONO = '"JetBrains Mono", "SFMono-Regular", ui-monospace, monospace';
@@ -367,8 +367,10 @@ function drawTimeline(canvas, data, idx, opts = {}) {
       const d = new Date(t);
       const dd = String(d.getUTCDate()).padStart(2, '0');
       const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-      g.fillText(`${dd}.${mm}`, xi - 14, h - 4);
+      g.textAlign = xi < left + 18 ? 'left' : xi > w - right - 18 ? 'right' : 'center';
+      g.fillText(`${dd}.${mm}`, xi, h - 4);
     }
+    g.textAlign = 'start';
   }
 
   // Playhead cursor.
@@ -437,17 +439,19 @@ function drawPanorama(canvas, data, idx, opts = {}) {
     g.stroke();
 
     if (az % 45 === 0) {
-      g.strokeStyle = az % 90 === 0 ? 'rgba(148, 163, 184, 0.16)' : COLORS.grid;
+      g.strokeStyle = az % 90 === 0 ? 'rgba(255, 255, 255, 0.1)' : COLORS.grid;
       g.beginPath(); g.moveTo(ax, top); g.lineTo(ax, top + H); g.stroke();
       const lbl = compass[az / 45];
       g.fillStyle = lbl.length === 1 ? COLORS.cardinal : COLORS.label;
       g.font = `${lbl.length === 1 ? '600 ' : ''}${compact ? 9.5 : 10}px ${MONO}`;
+      g.textAlign = az === 0 ? 'left' : az === 360 ? 'right' : 'center';
       g.fillText(lbl, ax, h - 4);
       if (!compact || az % 90 === 0) {
-        g.fillStyle = COLORS.label;
+        g.fillStyle = 'rgba(139, 155, 180, 0.65)';
         g.font = `9px ${MONO}`;
         g.fillText(`${String(az).padStart(3, '0')}°`, ax, top - 5);
       }
+      g.textAlign = 'center';
     }
   }
   g.textAlign = 'start';
@@ -518,13 +522,13 @@ function drawPanorama(canvas, data, idx, opts = {}) {
       g.setLineDash([]);
       const tag = `${lbl} ${b.el_deg >= 0 ? '+' : ''}${b.el_deg.toFixed(1)}°`;
       g.font = `600 9.5px ${MONO}`;
-      const tw = g.measureText(tag).width + 6;
-      const tx = cx + 8 + tw > left + W ? cx - tw - 8 : cx + 8;
-      const ty = Math.max(top + 3, Math.min(top + H - 15, cy - 6));
-      g.fillStyle = 'rgba(4, 7, 13, 0.84)';
-      g.fillRect(tx, ty, tw, 13);
+      const tw = g.measureText(tag).width + 8;
+      const tx = cx + 10 + tw > left + W ? cx - tw - 10 : cx + 10;
+      const ty = Math.max(top + 4, Math.min(top + H - 18, cy - 7));
+      g.fillStyle = 'rgba(7, 9, 13, 0.9)';
+      g.fillRect(tx, ty, tw, 14);
       g.fillStyle = col;
-      g.fillText(tag, tx + 3, ty + 9.5);
+      g.fillText(tag, tx + 4, ty + 10.5);
     }
   }
 
