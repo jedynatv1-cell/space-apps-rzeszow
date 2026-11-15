@@ -4,8 +4,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import * as E from './ephem.js?v=20261115e';
-import { SITE_INFO } from './site-info.js?v=20261115e';
+import * as E from './ephem.js?v=20261115f';
+import { SITE_INFO } from './site-info.js?v=20261115f';
 
 const $ = id => document.getElementById(id);
 // Embed mode (solar.html?embed=1): shown inside a panel on index.html. Settings start collapsed and
@@ -672,8 +672,8 @@ function wirePanels() {
   c.addEventListener('click', e => { e.stopPropagation(); card.pinned = true; c.classList.add('open'); });
   renderer.domElement.addEventListener('click', () => { hideCard(true); togglePicker(false); });
   document.addEventListener('keydown', e => {
-    if (e.target.matches('input, select, textarea')) return;
-    if (e.key === ' ') { e.preventDefault(); if (e.target.matches('button')) e.target.blur(); setPlaying(!state.playing); }
+    if (e.target.matches?.('input, select, textarea')) return;
+    if (e.key === ' ') { e.preventDefault(); if (e.target.matches?.('button')) e.target.blur(); setPlaying(!state.playing); }
     if (e.key === 'ArrowRight') setTime(state.t + DAY);
     if (e.key === 'ArrowLeft') setTime(state.t - DAY);
     if (e.key === 'Escape') { hideCard(true); togglePicker(false); }
