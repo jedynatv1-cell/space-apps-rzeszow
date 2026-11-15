@@ -5,144 +5,238 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lunar Landing Site Navigator</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="stylesheet" href="app.css?v=20261115c">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css?v=20261115q">
 </head>
 <body>
 <header>
-  <div class="brand">
-    <div class="brand-top">
-      <span class="kicker">LUNAR SOUTH POLE TELEMETRY &amp; HORIZON ANALYSIS</span>
+  <div class="header-inner">
+    <div class="brand">
+      <span class="status-led" aria-hidden="true"></span>
       <h1>Lunar Landing Site Navigator</h1>
     </div>
-    <p>Topocentric Sun &amp; Earth visibility against real LRO LOLA terrain — power budgets &amp; direct-to-Earth (DTE) windows.</p>
-  </div>
-  <div class="header-actions">
-    <a class="nav-pill" href="solar.html">
-      <span class="nav-dot"></span>3D Moon &amp; Solar System →
-    </a>
-    <div class="mode" role="radiogroup" aria-label="Detail level">
-      <button type="button" role="radio" data-mode="public" title="Plain-language summary: countdowns, sunlight and Earth contact">Public</button>
-      <button type="button" role="radio" data-mode="expert" title="Everything: coordinates, azimuth/elevation, terrain angles, link gaps">Expert</button>
+
+    <nav class="tabs" role="tablist" aria-label="Workspace view">
+      <button type="button" role="tab" data-tab="explore" aria-selected="true">Site Analysis</button>
+      <button type="button" role="tab" data-tab="compare" aria-selected="false">Compare</button>
+      <a class="nav-link" href="solar.html">3D Globe <span aria-hidden="true">↗</span></a>
+    </nav>
+
+    <div class="header-actions">
+      <button type="button" id="tour-btn" class="tour-btn" title="Interactive mission guide (H)">Guide</button>
+      <div class="mode" role="radiogroup" aria-label="Detail level">
+        <button type="button" role="radio" data-mode="public" title="Plain-language mission readiness summary">Public</button>
+        <button type="button" role="radio" data-mode="expert" title="Full telemetry, coordinates, and CSV export">Expert</button>
+      </div>
+      <details id="server">
+        <summary><span id="server-label">…</span></summary>
+        <form id="server-form">
+          <label>Telemetry server URL <input id="api" placeholder="same-origin or http://laptop-l1:3000" size="28"></label>
+          <div class="server-btns">
+            <button type="submit">Connect</button>
+            <button type="button" id="use-demo" class="secondary">Demo</button>
+            <button type="button" id="use-recorded" class="secondary">Recorded</button>
+          </div>
+        </form>
+      </details>
     </div>
-    <details id="server">
-      <summary>API: <span id="server-label">…</span></summary>
-      <form id="server-form">
-        <label>API base URL <input id="api" placeholder="empty = this server, or http://laptop-l1:3000" size="28"></label>
-        <div class="server-btns">
-          <button type="submit">Connect</button>
-          <button type="button" id="use-demo" class="secondary">Demo data</button>
-          <button type="button" id="use-recorded" class="secondary">Recorded L1</button>
-        </div>
-      </form>
-    </details>
   </div>
 </header>
 
-<div id="demo-banner" hidden>DEMO DATA: approximate geometry and synthetic terrain, not the real ephemeris. Connect to the server for real results.</div>
+<div id="demo-banner" hidden>Synthetic demo mode — approximate geometry and procedural terrain. Connect to the live server for JPL DE440s + LOLA DEM data.</div>
 
 <main>
   <form id="f" class="panel controls" novalidate>
-    <div class="controls-top">
-      <nav class="tabs" role="tablist">
-        <button type="button" role="tab" data-tab="explore" aria-selected="true">Explore a site</button>
-        <button type="button" role="tab" data-tab="compare" aria-selected="false">Compare sites</button>
-      </nav>
-      <div class="quick-actions" data-only="explore">
-        <button type="button" id="best" class="secondary" title="Search a 500 m radius (100 m grid) for the spot with the most sunlight">Best spot within 500 m</button>
-        <button type="button" id="csv" class="secondary expert" title="Download full ephemeris and terrain horizon track as CSV">Export CSV ↓</button>
+    <div class="cmd-strip">
+      <div class="cmd-fields" data-only="explore">
+        <label class="grow">Site <select id="site"></select></label>
+        <label class="expert coord">Lat (°N) <input id="lat" type="number" step="any" min="-90" max="90" value="-89.45" class="num"></label>
+        <label class="expert coord">Lon (°E) <input id="lon" type="number" step="any" min="-180" max="180" value="-129.78" class="num"></label>
       </div>
-    </div>
-    <div class="row" data-only="explore">
-      <label class="grow">Landing site <select id="site"></select></label>
-      <label class="expert coord">Lat (°) <input id="lat" type="number" step="any" min="-90" max="90" value="-89.45" class="num"></label>
-      <label class="expert coord">Lon (°E) <input id="lon" type="number" step="any" min="-180" max="180" value="-129.78" class="num"></label>
-    </div>
-    <div class="row" data-only="compare" hidden>
-      <label class="grow">Site A <select class="cmp-site"></select></label>
-      <label class="grow">Site B <select class="cmp-site"></select></label>
-      <label class="grow">Site C <select class="cmp-site"></select></label>
-    </div>
-    <div class="row">
-      <label>Start (UTC) <input id="start" type="datetime-local" value="2026-11-14T00:00"></label>
-      <label>Window (days) <input id="days" type="number" step="any" min="1" max="400" value="30" class="num"></label>
-      <label class="expert">Step (min) <input id="step" type="number" step="any" min="1" value="60" class="num"></label>
-      <button type="submit">Compute</button>
-      <span class="slips"><span class="slips-lbl">Slip</span><button type="button" data-d="-7">−7d</button><button type="button" data-d="-1">−1d</button><button type="button" data-d="1">+1d</button><button type="button" data-d="7">+7d</button></span>
+      <div class="cmd-fields" data-only="compare" hidden>
+        <label class="grow">Site A <select class="cmp-site"></select></label>
+        <label class="grow">Site B <select class="cmp-site"></select></label>
+        <label class="grow">Site C <select class="cmp-site"></select></label>
+      </div>
+
+      <div class="cmd-time">
+        <label id="start-lbl"><span class="lbl-row">Start (UTC) <span id="start-win" class="win-tag"></span></span><input id="start" type="datetime-local" value="2026-11-14T00:00"></label>
+        <label>Days <input id="days" type="number" step="any" min="1" max="400" value="30" class="num short"></label>
+        <label class="expert">Step (m) <input id="step" type="number" step="any" min="1" value="60" class="num short"></label>
+        <div class="slips" title="Shift start date">
+          <button type="button" data-d="-7">−7d</button>
+          <button type="button" data-d="-1">−1d</button>
+          <button type="button" data-d="1">+1d</button>
+          <button type="button" data-d="7">+7d</button>
+        </div>
+      </div>
+
+      <div class="cmd-actions">
+        <button type="submit" class="btn-primary">Run</button>
+        <button type="button" id="best" class="secondary" data-only="explore" title="NASA SPLICE HDA: evaluate a 500 m radius (100 m grid) for best lighting">500 m best spot</button>
+        <button type="button" id="csv" class="secondary expert" data-only="explore" title="Download full ephemeris and terrain horizon track as CSV">CSV</button>
+      </div>
     </div>
   </form>
 
   <div id="err" role="alert"></div>
-  <div id="busy" role="status" hidden><span class="spin"></span> Computing… the first request for a site loads its terrain and can take a few seconds.</div>
+  <div id="busy" role="status" hidden><span class="spin"></span> Computing topocentric ephemeris &amp; ray-marching LOLA DEM…</div>
 
-  <!-- Timeline + playback, shared by both views. -->
-  <section class="panel" id="timeline-panel">
-    <div class="play">
-      <button type="button" id="play" aria-label="Play">▶</button>
-      <select id="speed" aria-label="Playback speed">
-        <option value="0.25">6 h / s</option>
-        <option value="1" selected>1 day / s</option>
-        <option value="3">3 days / s</option>
-        <option value="7">1 week / s</option>
-      </select>
-      <input id="scrub" type="range" min="0" max="0" value="0" step="any" aria-label="Time">
-      <output id="now">—</output>
-    </div>
-    <canvas id="timeline" data-only="explore"></canvas>
-    <div id="cmp-bands" data-only="compare" hidden></div>
-    <div class="legend expert" data-only="explore">
-      <span class="sun">━ Sun elevation</span><span class="earth">━ Earth elevation</span>
-      <span class="hz">━ Horizon under Sun</span><span class="hz">┅ Horizon under Earth</span>
-      <span>Bands: brightness = visible disk fraction</span>
+  <section id="explore" data-only="explore">
+    <div id="moon3d-mount"></div>
+    <div class="split">
+      <!-- Left: Unified Sky & Horizon Canvas -->
+      <div class="panel sky-wrap" id="pano-panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <h2>Sky &amp; Horizon</h2>
+            <span class="readout-inline" id="pano-read">0.0° N · Ridge —</span>
+          </div>
+          <div class="sky-controls">
+            <label class="inline expert" id="full-sky-label" hidden><input type="checkbox" id="full-sky"> 0–90° dome</label>
+            <div class="chart-switch" id="sky-switch" role="radiogroup" aria-label="Chart projection">
+              <button type="button" role="radio" data-sky-view="pano" aria-checked="true">Panorama 360°</button>
+              <button type="button" role="radio" data-sky-view="polar" aria-checked="false">Polar</button>
+            </div>
+          </div>
+        </div>
+        <p class="panel-sub">360° mountain profile around the site — sunlight powers solar panels; direct line-of-sight to Earth carries radio.</p>
+        <div class="chart-stage">
+          <canvas id="pano" aria-label="360 degree horizon panorama"></canvas>
+          <canvas id="sky" hidden aria-label="Polar sky plot"></canvas>
+        </div>
+        <div class="chart-foot">
+          <div class="legend">
+            <span class="leg-item"><i class="sw sw-sun"></i>Sun</span>
+            <span class="leg-item"><i class="sw sw-earth"></i>Earth (DTE)</span>
+            <span class="leg-item"><i class="sw sw-hz"></i>LOLA Terrain</span>
+            <span class="leg-item"><i class="sw sw-cur"></i>Cursor</span>
+          </div>
+          <span class="micro-meta" id="pano-note"></span>
+        </div>
+      </div>
+
+      <!-- Right: Single Cohesive Telemetry Summary Column -->
+      <div class="side">
+        <div class="panel telemetry-hub">
+          <div id="verdict" hidden></div>
+          <div id="readout"></div>
+          <div class="grid" id="metrics"></div>
+        </div>
+        <div class="panel" id="best-panel" hidden></div>
+      </div>
     </div>
   </section>
 
-  <section id="explore" data-only="explore">
-    <div class="split">
-      <div class="panel sky-wrap">
-        <div class="sky-head">
-          <h2>Sky from the site</h2>
-          <label class="inline expert"><input type="checkbox" id="full-sky"> Full sky (0–90°)</label>
+  <!-- Timeline & Playback Scrubber -->
+  <section class="panel" id="timeline-panel">
+    <div class="panel-head">
+      <h2>Visibility Timeline</h2>
+      <div class="play">
+        <button type="button" id="play" aria-label="Play">▶</button>
+        <select id="speed" aria-label="Playback speed">
+          <option value="0.25">6h / s</option>
+          <option value="1" selected>1d / s</option>
+          <option value="3">3d / s</option>
+          <option value="7">7d / s</option>
+        </select>
+        <input id="scrub" type="range" min="0" max="0" value="0" step="any" aria-label="Time">
+        <output id="now">—</output>
+        <span id="now-win" class="win-tag"></span>
+      </div>
+    </div>
+    <canvas id="timeline" data-only="explore"></canvas>
+    <div id="cmp-bands" data-only="compare" hidden></div>
+    <div class="legend expert timeline-legend" data-only="explore">
+      <span class="leg-item"><i class="sw sw-win"></i>Window open</span>
+      <span class="leg-item"><i class="sw sw-sun"></i>Sunlit</span>
+      <span class="leg-item"><i class="sw sw-earth"></i>Earth DTE</span>
+      <span class="leg-item"><i class="sw sw-hz-line"></i>Ridge under Sun</span>
+      <span class="leg-item"><i class="sw sw-hz-dash"></i>Ridge under Earth</span>
+    </div>
+  </section>
+
+  <section id="explore-aux" data-only="explore">
+    <!-- Compact NASA SPLICE Workflow Strip -->
+    <div class="panel splice-panel" id="splice-workflow">
+      <div class="panel-head">
+        <div class="panel-title">
+          <h2>NASA SPLICE · Descent &amp; 500 m Safe Divert</h2>
+          <a class="subtle-link" href="https://www.nasa.gov/safe-and-precise-landing-integrated-capabilities-evolution-splice/" target="_blank" rel="noopener">NASA STMD ↗</a>
         </div>
-        <canvas id="sky"></canvas>
-        <p class="hint expert">Zenith at centre, north up, east right. Radial scale auto-zooms to the Sun &amp; Earth elevation band; grey marks occluding LOLA terrain. Disks drawn to true angular scale.</p>
+        <button type="button" class="secondary btn-xs" id="splice-run-btn">Run 500 m scan</button>
       </div>
-      <div class="side">
-        <div class="panel" id="verdict" hidden></div>
-        <div class="panel" id="best-panel" hidden></div>
-        <div class="panel" id="readout"></div>
-        <div class="grid" id="metrics"></div>
+      <div class="splice-rail">
+        <div class="splice-step">
+          <div class="step-kicker">01 · Approach (TRN)</div>
+          <b>Pinpoint location</b>
+          <span class="step-val" id="splice-trn-readout">—</span>
+        </div>
+        <div class="splice-step">
+          <div class="step-kicker">02 · Braking (NDL)</div>
+          <b>Laser speed control</b>
+          <span class="step-val">4-beam Doppler lidar (cm/s)</span>
+        </div>
+        <div class="splice-step">
+          <div class="step-kicker">03 · Hazard Scan (HDL)</div>
+          <b>Check terrain &amp; light</b>
+          <span class="step-val" id="splice-hdl-readout">—</span>
+        </div>
+        <div class="splice-step" id="splice-step-dqg">
+          <div class="step-kicker">04 · Divert (DQG)</div>
+          <b>Steer to brighter spot</b>
+          <span class="step-val" id="splice-dqg-readout">Evaluates 500 m ridge grid</span>
+        </div>
       </div>
     </div>
-    <div class="panel" id="pano-panel">
-      <div class="bp-head"><h2>360° Horizon Panorama</h2><small id="pano-read">hover to inspect azimuth &amp; ridge elevation</small></div>
-      <canvas id="pano" aria-label="360 degree horizon panorama"></canvas>
-      <p class="hint" id="pano-note"></p>
-    </div>
+
+    <!-- Launch-Slip Sensitivity Table -->
     <div class="panel" id="slips" hidden>
-      <div class="bp-head"><h2>If the landing slips</h2><small id="slips-note"></small></div>
+      <div class="panel-head">
+        <div class="panel-title">
+          <h2>Launch-Slip Impact</h2>
+          <span class="micro-meta">How power and Earth contact change if launch slips +1, +7, or +30 days</span>
+        </div>
+        <small class="micro-meta" id="slips-note"></small>
+      </div>
       <table id="slips-table"></table>
-      <p class="hint">Same site and window duration across delayed launch dates. Deltas relative to planned date; ★ = best date for each metric.</p>
     </div>
   </section>
 
   <section id="compare" data-only="compare" hidden>
-    <div class="cmp-cols" id="cmp-cols"></div>
-    <div class="panel">
-      <h2>Side-by-side comparison</h2>
+    <div class="panel cmp-charts-panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <h2>Multi-Site Horizon Overlay</h2>
+          <span class="readout-inline" id="cmp-read">0°–360° shared azimuth</span>
+        </div>
+        <div class="chart-switch" id="cmp-switch" role="radiogroup" aria-label="Comparison chart projection">
+          <button type="button" role="radio" data-cmp-view="pano" aria-checked="true">Stacked Panoramas</button>
+          <button type="button" role="radio" data-cmp-view="polar" aria-checked="false">Polar</button>
+        </div>
+      </div>
+      <div class="cmp-cols pano-stack" id="cmp-cols"></div>
+    </div>
+    <div class="panel cmp-table-panel">
+      <div class="panel-head">
+        <h2>Side-by-Side Comparison</h2>
+      </div>
       <table id="cmp-table"></table>
-      <p class="hint">★ = optimal site among compared candidates for that metric.</p>
     </div>
   </section>
 </main>
 
 <footer>
-  <span>Elevations vs. local tangent plane of the 1737.4 km IAU sphere · Azimuth clockwise from North · UTC</span>
-  <span>Horizon model: <strong id="hz-source">—</strong></span>
+  <span>MOON_ME_DE440_ME421 · 1737.4 km ref sphere · Azimuth CW from North · UTC</span>
+  <span>Terrain: <strong id="hz-source">—</strong></span>
 </footer>
 
-<script src="sky.js?v=20261115c"></script>
-<script src="mock.js?v=20261115c"></script>
-<script src="app.js?v=20261115c"></script>
-<script src="embed3d.js?v=20261115j"></script>
+<script src="sky.js?v=20261115q"></script>
+<script src="mock.js?v=20261115q"></script>
+<script src="app.js?v=20261115q"></script>
+<script src="embed3d.js?v=20261115q"></script>
+<script src="tour.js?v=20261115q"></script>
 </body>
 </html>

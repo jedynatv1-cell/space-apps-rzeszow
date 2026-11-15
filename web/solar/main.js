@@ -4,8 +4,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import * as E from './ephem.js?v=20261115j';
-import { SITE_INFO } from './site-info.js?v=20261115j';
+import * as E from './ephem.js?v=20261115q';
+import { SITE_INFO } from './site-info.js?v=20261115q';
+import { PLANET_INFO } from './planet-info.js?v=20261115q';
 
 const $ = id => document.getElementById(id);
 // Embed mode (solar.html?embed=1): shown inside a panel on index.html. Settings start collapsed and
@@ -18,12 +19,71 @@ if (new URLSearchParams(location.search).get('show') === 'all') {
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const MOON_R = E.BODIES.moon.radius;
 const PLANETS = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
-const TRAIL_DAYS = 365, TRAIL_N = 366;
+const PICKABLE_BODIES = ['sun', 'moon', ...PLANETS];
+const TRAIL_ARC = 0.28, TRAIL_N = 128;
+
+const FALLBACK_PLANET_INFO = {
+  sun: {
+    type: 'G-type Main-Sequence Star', radiusKm: 695700, gravity: '274.0 m/s²', period: '—',
+    summary: 'Central star containing 99.86% of the solar system mass, providing heat and illumination.',
+    missionNote: 'Solar flux powers photovoltaic arrays for south pole landers during unshadowed periods.'
+  },
+  moon: {
+    type: 'Planetary-Mass Satellite', radiusKm: 1737.4, gravity: '1.62 m/s²', period: '27.32 d',
+    summary: 'Earth’s tidally-locked satellite with an axial tilt of 1.54° relative to the ecliptic normal.',
+    missionNote: 'Exploration target for Artemis and CLPS missions targeting south pole volatile deposits.'
+  },
+  mercury: {
+    type: 'Terrestrial Planet', radiusKm: 2439.7, gravity: '3.70 m/s²', period: '87.97 d',
+    summary: 'Innermost rocky planet in a 3:2 spin-orbit resonance with extreme diurnal temperature swings.',
+    missionNote: 'Visited by Mariner 10 and MESSENGER; BepiColombo currently en route.'
+  },
+  venus: {
+    type: 'Terrestrial Planet', radiusKm: 6051.8, gravity: '8.87 m/s²', period: '224.70 d',
+    summary: 'Dense runaway greenhouse atmosphere with 92 bar surface pressure and clouds of sulfuric acid.',
+    missionNote: 'Subject of Venera and Magellan missions; DAVINCI and VERITAS scheduled for launch.'
+  },
+  earth: {
+    type: 'Terrestrial Planet', radiusKm: 6371.0, gravity: '9.81 m/s²', period: '365.26 d',
+    summary: 'Dense water-rich terrestrial planet supporting life with an active biosphere and magnetosphere.',
+    missionNote: 'Direct-to-Earth (DTE) radio links require uninterrupted line-of-sight from lunar lander masts.'
+  },
+  mars: {
+    type: 'Terrestrial Planet', radiusKm: 3389.5, gravity: '3.72 m/s²', period: '686.98 d',
+    summary: 'Cold desert world with large shield volcanoes, deep canyons, and carbon dioxide polar ice caps.',
+    missionNote: 'Under continuous surface and orbital study by robotic landers, rovers, and orbiters.'
+  },
+  jupiter: {
+    type: 'Gas Giant', radiusKm: 69911, gravity: '24.79 m/s²', period: '4332.59 d',
+    summary: 'Largest planet in the Solar System, with deep hydrogen atmosphere and Great Red Spot storm.',
+    missionNote: 'Explored by Galileo and Juno; ESA JUICE and Europa Clipper en route.'
+  },
+  saturn: {
+    type: 'Gas Giant', radiusKm: 58232, gravity: '10.44 m/s²', period: '10759.22 d',
+    summary: 'Ringed gas giant with thousands of thin icy ringlets and ocean-bearing moons Titan and Enceladus.',
+    missionNote: 'Explored by Cassini-Huygens for 13 years; Dragonfly mission to Titan under development.'
+  },
+  uranus: {
+    type: 'Ice Giant', radiusKm: 25362, gravity: '8.69 m/s²', period: '30688.5 d',
+    summary: 'Ice giant tilted 97.8° onto its orbital plane with a dynamic atmosphere and pale cyan hue.',
+    missionNote: 'Encountered by Voyager 2 in 1986; identified as top priority for future flagship mission.'
+  },
+  neptune: {
+    type: 'Ice Giant', radiusKm: 24622, gravity: '11.15 m/s²', period: '60182 d',
+    summary: 'Outermost planet featuring supersonic retrograde winds and cryovolcanic retrograde moon Triton.',
+    missionNote: 'Encountered by Voyager 2 in 1989; tracked via Hubble and James Webb Space Telescope.'
+  }
+};
+function getPlanetInfo(key) {
+  return (typeof PLANET_INFO !== 'undefined' && PLANET_INFO?.[key]) || FALLBACK_PLANET_INFO[key] || {};
+}
 
 const state = {
   t: Date.now(),
   playing: false,
   theme: 'dark',
+  camFocus: 'moon',
+  activeSite: null,
 };
 
 // ---------- renderer, camera, controls ----------
@@ -43,12 +103,13 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 1e11);
 camera.up.set(0, 0, 1); // ecliptic north is up
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.enablePan = false;            // the Moon stays the centre
+controls.enablePan = false;            // target tracks Moon, Earth, or Sun cleanly
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.zoomSpeed = 1.6;
 controls.minDistance = MOON_R + 12;
 controls.maxDistance = 3e10;
+controls.addEventListener('start', () => { fly = null; });
 
 function resize() {
   const w = view.clientWidth, h = view.clientHeight;
@@ -138,6 +199,7 @@ const moonFrame = new THREE.Group();     // Moon body frame, oriented each frame
 moonFrame.matrixAutoUpdate = false;
 scene.add(moonFrame);
 const moonMesh = new THREE.Mesh(moonGeometry(720, 360), moonMaterial);
+moonMesh.userData.bodyKey = 'moon';
 moonMesh.visible = false;
 moonFrame.add(moonMesh);
 
@@ -222,18 +284,40 @@ function planetMaterial(map) {
 }
 
 const bodies = {};
-const MOON_ORBIT_N = 180, MOON_SIDEREAL = 27.3217;
-let moonOrbit = null;
-function makeLabel(text, color) {
+const MOON_ORBIT_N = 360, MOON_SIDEREAL = 27.3217;
+const MOON_TRAIL_N = 64, MOON_TRAIL_DAYS = 7.5;
+let moonOrbit = null, moonTrail = null;
+function makeLabel(text, color, key) {
   const el = document.createElement('div');
   el.className = 'plabel';
-  el.innerHTML = `<i style="background:${color}"></i>${esc(text)}`;
+  el.innerHTML = `<span class="plabel-tag" data-body="${esc(key)}"><i style="background:${color};color:${color}"></i>${esc(text)}</span>`;
+  const tag = el.querySelector('.plabel-tag');
+  tag.addEventListener('pointerenter', () => {
+    if ($('opt-planet-hover')?.checked && !card.pinned) {
+      showPlanetCard(key);
+      cancelHide();
+    }
+  });
+  tag.addEventListener('pointerleave', () => {
+    if ($('opt-planet-hover')?.checked && !card.pinned) {
+      scheduleHide();
+    }
+  });
+  tag.addEventListener('click', e => {
+    e.stopPropagation();
+    if ($('opt-planet-hover')?.checked) {
+      showPlanetCard(key);
+      card.pinned = true;
+      $('card').classList.add('open');
+    }
+  });
   return new CSS2DObject(el);
 }
 
 function buildBodies() {
   // Sun: a plain bright sphere plus a soft additive glow sprite.
   const sun = new THREE.Mesh(new THREE.SphereGeometry(E.BODIES.sun.radius, 64, 32), new THREE.MeshBasicMaterial({ color: 0xffd36b }));
+  sun.userData.bodyKey = 'sun';
   const gc = document.createElement('canvas'); gc.width = gc.height = 128;
   const gg = gc.getContext('2d'), grad = gg.createRadialGradient(64, 64, 8, 64, 64, 64);
   grad.addColorStop(0, 'rgba(255,220,140,0.9)'); grad.addColorStop(0.3, 'rgba(255,190,80,0.35)'); grad.addColorStop(1, 'rgba(255,160,40,0)');
@@ -241,22 +325,32 @@ function buildBodies() {
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(gc), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
   glow.scale.setScalar(E.BODIES.sun.radius * 8);
   sun.add(glow);
-  const sunLabel = makeLabel('Sun', '#ffd36b'); sun.add(sunLabel);
+  const sunLabel = makeLabel('Sun', '#ffd36b', 'sun'); sun.add(sunLabel);
   scene.add(sun);
   bodies.sun = { obj: sun, label: sunLabel };
 
-  const moonLabel = makeLabel('Moon', '#d9d9d9'); scene.add(moonLabel);
+  const moonLabel = makeLabel('Moon', '#d9d9d9', 'moon'); scene.add(moonLabel);
   bodies.moon = { label: moonLabel };
   const mg = new THREE.BufferGeometry();
   mg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MOON_ORBIT_N * 3), 3));
-  moonOrbit = new THREE.Line(mg, new THREE.LineBasicMaterial({ color: 0xbfc5d2, transparent: true, opacity: 0.5, depthWrite: false }));
+  moonOrbit = new THREE.LineLoop(mg, new THREE.LineBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.48, depthWrite: false, depthTest: true }));
   moonOrbit.frustumCulled = false;
   scene.add(moonOrbit);
+
+  const mtg = new THREE.BufferGeometry();
+  mtg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MOON_TRAIL_N * 3), 3));
+  const mtc = new Float32Array(MOON_TRAIL_N * 4);
+  for (let i = 0; i < MOON_TRAIL_N; i++) mtc.set([0.88, 0.92, 0.98, (i / (MOON_TRAIL_N - 1)) ** 1.6 * 0.85], i * 4);
+  mtg.setAttribute('color', new THREE.BufferAttribute(mtc, 4));
+  moonTrail = new THREE.Line(mtg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }));
+  moonTrail.frustumCulled = false;
+  scene.add(moonTrail);
 
   for (const key of PLANETS) {
     const b = E.BODIES[key];
     const mat = planetMaterial(planetTexture(key, b.color));
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(b.radius, 64, 32), mat);
+    mesh.userData.bodyKey = key;
     // Tilt: SphereGeometry poles are on +y; rotate +y onto the planet's pole.
     mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), poleFromRaDec(...POLES[key]));
     if (key === 'saturn') {
@@ -265,7 +359,7 @@ function buildBodies() {
       ring.rotation.x = Math.PI / 2; // ring plane = planet equator (xz of the sphere)
       mesh.add(ring);
     }
-    const label = makeLabel(b.name, b.color);
+    const label = makeLabel(b.name, b.color, key);
     mesh.add(label);
     scene.add(mesh);
     bodies[key] = { obj: mesh, label, mat };
@@ -282,7 +376,7 @@ function makeTrail(key) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_N * 3), 3));
   const col = new Float32Array(TRAIL_N * 4), c = new THREE.Color(E.BODIES[key].color);
-  for (let i = 0; i < TRAIL_N; i++) { col.set([c.r, c.g, c.b, (i / (TRAIL_N - 1)) ** 1.5 * 0.95], i * 4); }
+  for (let i = 0; i < TRAIL_N; i++) { col.set([c.r, c.g, c.b, (i / (TRAIL_N - 1)) ** 1.6 * 0.78], i * 4); }
   g.setAttribute('color', new THREE.BufferAttribute(col, 4));
   const line = new THREE.Line(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }));
   line.frustumCulled = false;
@@ -290,37 +384,45 @@ function makeTrail(key) {
   trailLines[key] = line;
 }
 
-function updateTrails(d) {
+function updateTrails(d, pos) {
   for (const key of PLANETS) {
     const arr = trailLines[key].geometry.attributes.position;
-    for (let i = 0; i < TRAIL_N; i++) {
-      const p = E.bodyHelio(key, d - TRAIL_DAYS + i * TRAIL_DAYS / (TRAIL_N - 1));
+    const span = E.BODIES[key].periodDays * TRAIL_ARC;
+    for (let i = 0; i < TRAIL_N - 1; i++) {
+      const p = E.bodyHelio(key, d - span + i * span / (TRAIL_N - 1));
       arr.setXYZ(i, p[0], p[1], p[2]);
     }
+    const pFin = (pos && pos[key]) ? pos[key] : E.bodyHelio(key, d);
+    arr.setXYZ(TRAIL_N - 1, pFin[0], pFin[1], pFin[2]);
     arr.needsUpdate = true;
   }
 }
 
 let orbitsFor = null;
 function updateOrbits(d) {
-  if (orbitsFor !== null && Math.abs(d - orbitsFor) < 30) return; // elements change slowly
+  if (orbitsFor !== null && Math.abs(d - orbitsFor) < 0.25) return;
   orbitsFor = d;
   for (const key of PLANETS) {
-    const n = 360, per = E.BODIES[key].periodDays, pts = new Float32Array((n + 1) * 3);
-    for (let i = 0; i <= n; i++) {
-      const p = E.planetHelio(key === 'earth' ? 'emb' : key, d - per * i / n);
-      pts.set(p, i * 3);
+    let pts;
+    try {
+      pts = E.planetOrbit(key, d, 1080);
+    } catch {
+      pts = E.planetOrbit(key === 'earth' ? 'emb' : key, d, 1080);
     }
     if (!orbitLines[key]) {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(pts, 3));
-      const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x7a8396, transparent: true, opacity: 0.35, depthWrite: false }));
+      const line = new THREE.LineLoop(g, new THREE.LineBasicMaterial({ color: 0x7a8396, transparent: true, opacity: 0.36, depthWrite: false }));
       line.frustumCulled = false;
       helio.add(line);
       orbitLines[key] = line;
     } else {
-      orbitLines[key].geometry.attributes.position.array.set(pts);
-      orbitLines[key].geometry.attributes.position.needsUpdate = true;
+      if (orbitLines[key].geometry.attributes.position.array.length !== pts.length) {
+        orbitLines[key].geometry.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+      } else {
+        orbitLines[key].geometry.attributes.position.array.set(pts);
+        orbitLines[key].geometry.attributes.position.needsUpdate = true;
+      }
     }
   }
 }
@@ -452,7 +554,7 @@ function addSites(sites) {
 }
 
 // One floating card, positioned above the hovered or pinned marker every frame.
-const card = { m: null, pinned: false, timer: 0 };
+const card = { m: null, bodyKey: null, pinned: false, timer: 0 };
 
 function fmtDate(iso) {
   if (!/^\d{4}-\d\d-\d\d/.test(iso || '')) return iso || '—';
@@ -467,9 +569,12 @@ function whyHtml(m, info) {
   if (m.cat === 'cand') {
     items = ['Long sunlit periods for solar power', 'Direct line of sight to Earth for radio contact',
       'Near permanently shadowed craters that may hold water ice'];
-  } else if (info.text) {
+  } else if (info?.text) {
     items = info.text.split(/(?<=\.)\s+|;\s+/).map(t => t.replace(/\.$/, '')).filter(Boolean).slice(0, 3)
       .map(t => t.charAt(0).toUpperCase() + t.slice(1));
+  } else {
+    const [cls, label] = statusOf(m.site);
+    items = [`${m.site.mission} exploration site`, `Coordinates: ${fmtLoc(m.site)}`, `Status: ${label}`];
   }
   if (!items.length) return '';
   const title = m.cat === 'hist' ? 'About this landing' : 'Why here';
@@ -477,39 +582,226 @@ function whyHtml(m, info) {
 }
 
 // Live conditions from our server (same numbers as the analysis page), fetched on first hover, cached.
+// Falls back cleanly to instantaneous & 30-day ephem.js geometry so the Date window indicator and mini-diagram always appear immediately.
 const condCache = new Map();
+const condResolved = new Map();
 // Same server choice as the analysis page: ?api=… or the saved address, else this page's server.
 const API_BASE = (new URLSearchParams(location.search).get('api') ?? localStorage.getItem('navApi') ?? '').replace(/\/$/, '');
 function condUrl(s) {
   const start = new Date(state.t).toISOString().slice(0, 10);
   return { key: `${s.lat_deg},${s.lon_deg},${start}`, url: `${API_BASE}/api/track?${new URLSearchParams({ lat: s.lat_deg, lon: s.lon_deg, start, days: 30, step_min: 60 })}` };
 }
+
+function getActiveLiveData(site, ms) {
+  if (!site) return null;
+  for (const data of condResolved.values()) {
+    if (!data?.points?.length) continue;
+    if (Math.abs(data._lat - site.lat_deg) < 1e-4 && Math.abs(data._lon - site.lon_deg) < 1e-4) {
+      const t0 = Date.parse(data.points[0].t);
+      const t1 = Date.parse(data.points[data.points.length - 1].t);
+      if (ms >= t0 && ms <= t1) return data;
+    }
+  }
+  return null;
+}
+
 const fmtDur = h => (h == null ? '—' : h < 48 ? `${Math.round(h)} h` : `${Math.floor(h / 24)} d ${Math.round(h % 24)} h`);
+const shortUtcDate = ms => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+function siteWinPoint(latDeg, lonDeg, ms) {
+  const d = E.daysSinceJ2000(ms);
+  const pos = E.allHelio(d), o = E.moonOrientation(d);
+  const rz = (v, a) => [v[0] * Math.cos(a) - v[1] * Math.sin(a), v[0] * Math.sin(a) + v[1] * Math.cos(a), v[2]];
+  const rx = (v, a) => [v[0], v[1] * Math.cos(a) - v[2] * Math.sin(a), v[1] * Math.sin(a) + v[2] * Math.cos(a)];
+  const toEl = target => {
+    const dir = [target[0] - pos.moon[0], target[1] - pos.moon[1], target[2] - pos.moon[2]];
+    const n = Math.hypot(...dir) || 1;
+    const u = rz(rx(rz(dir.map(v => v / n), -o.node), -o.incl), -o.w);
+    const lat = latDeg * Math.PI / 180, lon = lonDeg * Math.PI / 180;
+    const dot = u[0] * Math.cos(lat) * Math.cos(lon) + u[1] * Math.cos(lat) * Math.sin(lon) + u[2] * Math.sin(lat);
+    return Math.asin(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+  };
+  const sunEl = toEl(pos.sun), earthEl = toEl(pos.earth);
+  const sunOk = sunEl > -0.26, earthOk = earthEl > 0;
+  return { sunEl, earthEl, sunOk, earthOk, open: sunOk && earthOk };
+}
+
+function siteWinSeries(latDeg, lonDeg, startMs, days = 30) {
+  const stepH = 8, n = Math.round((days * 24) / stepH) + 1;
+  const pts = [];
+  let sunHits = 0, earthHits = 0, curDark = 0, maxDark = 0, sunsetH = null, sunriseH = null;
+  for (let i = 0; i < n; i++) {
+    const t = startMs + i * stepH * 36e5;
+    const p = siteWinPoint(latDeg, lonDeg, t);
+    if (p.sunOk) { sunHits++; curDark = 0; if (sunriseH === null && i > 0 && !pts[i - 1].sun_vis) sunriseH = i * stepH; }
+    else { curDark += stepH; maxDark = Math.max(maxDark, curDark); if (sunsetH === null && i > 0 && pts[i - 1].sun_vis) sunsetH = i * stepH; }
+    if (p.earthOk) earthHits++;
+    pts.push({ t: new Date(t).toISOString(), sun: { el_deg: p.sunEl }, earth: { el_deg: p.earthEl }, sun_vis: p.sunOk ? 1 : 0, earth_vis: p.earthOk ? 1 : 0 });
+  }
+  return {
+    points: pts,
+    source: 'ephem',
+    summary: {
+      sun_visible_pct: 100 * sunHits / n,
+      earth_visible_pct: 100 * earthHits / n,
+      longest_night_hours: maxDark,
+      hours_to_sunset: sunsetH,
+      hours_to_sunrise: sunriseH,
+    },
+  };
+}
+
+function evalWindowNow(m, liveData) {
+  const live = liveData || getActiveLiveData(m.site, state.t);
+  let pt = null;
+  if (live?.points?.length) {
+    let bestDiff = Infinity;
+    for (const p of live.points) {
+      const df = Math.abs(Date.parse(p.t) - state.t);
+      if (df < bestDiff) { bestDiff = df; pt = p; }
+    }
+    if (bestDiff > 6 * 36e5) pt = null;
+  }
+  const sunOk = pt ? pt.sun_vis > 0 : siteWinPoint(m.site.lat_deg, m.site.lon_deg, state.t).sunOk;
+  const earthOk = pt ? pt.earth_vis >= 0.5 : siteWinPoint(m.site.lat_deg, m.site.lon_deg, state.t).earthOk;
+  const open = sunOk && earthOk;
+  const reason = open ? 'Window open' : (!sunOk && !earthOk ? 'No Sun · No DTE' : !sunOk ? 'No Sun' : 'Low DTE');
+  return { open, sunOk, earthOk, reason };
+}
+
+function drawCardDiagram(canvas, series, nowMs) {
+  if (!canvas || !series?.points?.length) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = canvas.clientWidth || 290, h = canvas.clientHeight || 62;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const pts = series.points, n = pts.length;
+  const plotLeft = 28, right = 4, W = w - plotLeft - right, chartTop = 3, chartBot = 28;
+  let lo = -3, hi = 3;
+  for (const p of pts) { lo = Math.min(lo, p.sun.el_deg, p.earth.el_deg); hi = Math.max(hi, p.sun.el_deg, p.earth.el_deg); }
+  const y = v => chartTop + (chartBot - chartTop) * (hi - v) / Math.max(1, hi - lo);
+  const x = i => plotLeft + W * i / Math.max(1, n - 1);
+  g.strokeStyle = 'rgba(255,255,255,0.14)'; g.setLineDash([2, 2]);
+  g.beginPath(); g.moveTo(plotLeft, y(0)); g.lineTo(w - right, y(0)); g.stroke();
+  g.setLineDash([]);
+  const plot = (fn, col) => {
+    g.strokeStyle = col; g.lineWidth = 1.4; g.beginPath();
+    pts.forEach((p, i) => (i ? g.lineTo(x(i), y(fn(p))) : g.moveTo(x(i), y(fn(p)))));
+    g.stroke();
+  };
+  plot(p => p.earth.el_deg, '#38bdf8');
+  plot(p => p.sun.el_deg, '#f59e0b');
+  const rows = [
+    ['SUN', '#f59e0b', p => p.sun_vis > 0 ? 'rgba(245,158,11,0.85)' : null],
+    ['DTE', '#38bdf8', p => p.earth_vis >= 0.5 ? 'rgba(56,189,248,0.85)' : null],
+    ['WIN', '#34d399', p => (p.sun_vis > 0 && p.earth_vis >= 0.5) ? '#10b981' : 'rgba(239,68,68,0.32)'],
+  ];
+  g.font = '600 7.5px "JetBrains Mono", monospace';
+  rows.forEach(([lbl, tc, colFn], r) => {
+    const top = 33 + r * 9;
+    g.fillStyle = tc; g.fillText(lbl, 3, top + 4.8);
+    g.fillStyle = 'rgba(255,255,255,0.05)'; g.fillRect(plotLeft, top, W, 5);
+    for (let i = 0; i < n; i++) {
+      const c = colFn(pts[i]); if (!c) continue;
+      g.fillStyle = c;
+      const x0 = x(i - 0.5), x1 = x(i + 0.5);
+      const rx0 = Math.max(plotLeft, x0), rx1 = Math.min(w - right, x1 + 0.5);
+      if (rx1 > rx0) g.fillRect(rx0, top, rx1 - rx0, 5);
+    }
+  });
+  const t0 = Date.parse(pts[0].t), t1 = Date.parse(pts[n - 1].t);
+  if (nowMs >= t0 && nowMs <= t1 && t1 > t0) {
+    const cx = plotLeft + W * (nowMs - t0) / (t1 - t0);
+    g.strokeStyle = 'rgba(248,250,252,0.85)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(cx, 2); g.lineTo(cx, h - 2); g.stroke();
+  }
+}
+
 function verdictOf(sum) { // interim rule shared with the analysis page: Sun % and Earth %
   const rank = v => (v >= 70 ? 0 : v >= 50 ? 1 : 2), rankE = v => (v >= 50 ? 0 : v >= 30 ? 1 : 2);
   const r = Math.max(rank(sum.sun_visible_pct), rankE(sum.earth_visible_pct));
   return [['good', 'Good site'], ['marginal', 'Marginal site'], ['poor', 'Poor site']][r];
 }
-function condHtml(sum) {
+function condHtml(sum, srcLabel) {
   const [vcls, vword] = verdictOf(sum);
   const setFirst = sum.hours_to_sunset != null && (sum.hours_to_sunrise == null || sum.hours_to_sunset < sum.hours_to_sunrise);
   const next = setFirst ? `Sunset in ${fmtDur(sum.hours_to_sunset)}` : sum.hours_to_sunrise != null ? `Sunrise in ${fmtDur(sum.hours_to_sunrise)}` : 'No sunrise/sunset in window';
   return `<div class="verdict ${vcls}"><i></i>${vword} <small>for a solar-powered lander</small></div>
+    <canvas class="card-diagram" aria-label="30-day visibility and landing window diagram"></canvas>
+    <div class="card-diag-note"><span>Now .. +30d · Sun · DTE · Win</span> <span>${esc(srcLabel)}</span></div>
     <dl><dt>Sunlight</dt><dd>${(+sum.sun_visible_pct).toFixed(0)}% of the time</dd>
     <dt>Earth in view</dt><dd>${(+sum.earth_visible_pct).toFixed(0)}% (direct radio link)</dd>
     <dt>Longest night</dt><dd>${fmtDur(sum.longest_night_hours)}</dd>
     <dt>Next</dt><dd>${next}</dd></dl>`;
 }
+
+function updateCardWindow() {
+  const m = card.m || state.activeSite;
+  const db = $('date-btn');
+  if (!m || card.bodyKey) {
+    db.classList.remove('win-open', 'win-closed');
+    return;
+  }
+  const live = getActiveLiveData(m.site, state.t);
+  const w = evalWindowNow(m, live);
+  db.classList.toggle('win-open', w.open);
+  db.classList.toggle('win-closed', !w.open);
+  const dd = $('card-date');
+  if (dd && card.m) {
+    const info = SITE_INFO[m.site.mission] || {};
+    const statusLabel = w.open ? `Window open · ${shortUtcDate(state.t)}` : `${w.reason} · ${shortUtcDate(state.t)}`;
+    dd.innerHTML = `<span class="win-pill ${w.open ? 'open' : 'closed'}"><i></i>${esc(statusLabel)}</span> <span>${esc(fmtDate(info.date))}</span>`;
+  }
+}
+
+function updateMoonSummary() {
+  const summaryEl = $('moon-summary');
+  if (!summaryEl) return;
+  const cats = { hist: $('cat-hist')?.checked, planned: $('cat-planned')?.checked, cand: $('cat-cand')?.checked };
+  const enabled = siteMarkers.filter(m => cats[m.cat]);
+  if (card.m) {
+    const live = getActiveLiveData(card.m.site, state.t);
+    const w = evalWindowNow(card.m, live);
+    summaryEl.innerHTML = `<strong>${esc(card.m.site.name)}</strong>: ${w.open ? '<span class="open-count">Window Open</span>' : `<span style="color:#f87171">${esc(w.reason)}</span>`}`;
+    return;
+  }
+  if (!enabled.length) {
+    summaryEl.innerHTML = 'No site categories active';
+    return;
+  }
+  let openCount = 0;
+  for (const m of enabled) {
+    if (siteWinPoint(m.site.lat_deg, m.site.lon_deg, state.t).open) openCount++;
+  }
+  summaryEl.innerHTML = `<span class="open-count">${openCount} / ${enabled.length}</span> sites open at current UTC`;
+}
+
 async function loadConditions(m) {
   const { key, url } = condUrl(m.site);
   const body = () => (card.m === m ? $('card').querySelector('.cond-body') : null);
+  // Instant 0ms ephemeris estimate + 30-day diagram right on hover
+  const fallback = siteWinSeries(m.site.lat_deg, m.site.lon_deg, state.t, 30);
+  if (body()) {
+    body().innerHTML = condHtml(fallback.summary, 'ephem preview');
+    drawCardDiagram(body().querySelector('.card-diagram'), fallback, state.t);
+  }
+  updateCardWindow();
+  updateMoonSummary();
   try {
-    if (!condCache.has(key)) condCache.set(key, fetch(url).then(r => (r.ok ? r.json() : Promise.reject(new Error(r.status)))));
+    if (!condCache.has(key)) condCache.set(key, fetch(url, { signal: AbortSignal.timeout(4000) }).then(r => (r.ok ? r.json() : Promise.reject(new Error(r.status)))));
     const data = await condCache.get(key);
-    if (body()) body().innerHTML = condHtml(data.summary);
+    data._lat = m.site.lat_deg;
+    data._lon = m.site.lon_deg;
+    condResolved.set(key, data);
+    if (body()) {
+      body().innerHTML = condHtml(data.summary, 'LOLA + DE440s');
+      drawCardDiagram(body().querySelector('.card-diagram'), data, state.t);
+    }
+    updateCardWindow();
+    updateMoonSummary();
   } catch {
     condCache.delete(key);
-    if (body()) body().textContent = 'Live conditions need the analysis server.';
   }
 }
 
@@ -517,15 +809,19 @@ function showCard(m) {
   const s = m.site, [cls, label] = statusOf(s), info = SITE_INFO[s.mission] || {};
   const c = $('card');
   if (card.m !== m) {
-    card.m = m; card.pinned = false;
+    card.m = m;
+    card.bodyKey = null;
+    card.pinned = false;
+    state.activeSite = m;
     siteMarkers.forEach(x => x.el.classList.toggle('active', x === m));
     c.className = `glass ${cls}`;
+    c.style.removeProperty('--c');
     c.innerHTML = `
       <span class="status">${esc(label)}</span>
       <h3>${esc(s.name)}</h3>
       <dl>
         <dt>Mission</dt><dd>${esc(s.mission.replace(/\s*\(.*\)$/, ''))}</dd>
-        <dt>Date</dt><dd>${esc(fmtDate(info.date))}</dd>
+        <dt>Date</dt><dd id="card-date">${esc(fmtDate(info.date))}</dd>
         <dt>Location</dt><dd>${fmtLoc(s)}</dd>
         ${m.cat === 'cand' ? '<dt>Area</dt><dd>~15 × 15 km NASA candidate region (shaded on the surface)</dd>' : ''}
         ${m.cat === 'planned' ? '<dt>Area</dt><dd>illustrative 5 km radius (no published landing ellipse)</dd>' : ''}
@@ -533,83 +829,220 @@ function showCard(m) {
       </dl>
       ${whyHtml(m, info)}
       <div class="cond"><div class="sec">Conditions, next 30 days</div><div class="cond-body">Computing…</div></div>
+      <div class="actions">
+        <button class="text" data-fly>Fly to site</button>
+        <a class="text" data-horizon href="index.html?lat=${s.lat_deg}&lon=${s.lon_deg}">${EMBED ? 'Analyse this site ↑' : 'Horizon & Stats ↗'}</a>
+      </div>
       <div class="more"><div>
         ${info.text ? `<p>${esc(info.text)}</p>` : ''}
         ${s.coord_note ? `<p>${esc(s.coord_note)}</p>` : ''}
-        <div class="actions"><button class="text" data-fly>Fly to site</button><a class="text" data-horizon href="index.html?lat=${s.lat_deg}&lon=${s.lon_deg}">${EMBED ? 'Analyse this site ↑' : 'Horizon →'}</a></div>
+        ${!info.text && !s.coord_note ? `<p>${esc(s.mission)} — target coordinates ${fmtLoc(s)}.</p>` : ''}
       </div></div>
-      <div class="hint">Click for details</div>`;
+      <div class="hint">Click to expand background</div>`;
     loadConditions(m);
     if (EMBED) c.querySelector('[data-horizon]').onclick = e => {
       e.preventDefault(); e.stopPropagation();
-      // Same-origin parent (index.html) applies the site to the analysis form.
       window.parent.postMessage({ type: 'lunar-nav:site', lat: s.lat_deg, lon: s.lon_deg, name: s.name }, location.origin);
     };
     c.querySelector('[data-fly]').onclick = e => {
       e.stopPropagation();
-      hideCard(true); // do not cover the landing area we are flying to
-      flyTo(m.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix)), Math.min(camera.position.length(), MOON_R + Math.max(20, 20 * (AREA[m.cat]?.size ?? 7.5)))); // area spans ~100 px
+      state.activeSite = m;
+      hideCard(true); // preserves state.activeSite for #date-btn
+      setActiveCam('moon');
+      const rel = camera.position.distanceTo(controls.target);
+      flyTo(m.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix)), Math.min(rel, MOON_R + Math.max(20, 20 * (AREA[m.cat]?.size ?? 7.5))), 'moon');
     };
     c.hidden = false;
     c.style.animation = 'none'; void c.offsetWidth; c.style.animation = '';
   }
   positionCard();
+  updateMoonSummary();
+}
+
+function showPlanetCard(key) {
+  if (!$('opt-planet-hover')?.checked) return;
+  const b = E.BODIES[key];
+  if (!b) return;
+  const pInfo = getPlanetInfo(key);
+  const c = $('card');
+  card.m = null;
+  card.bodyKey = key;
+  card.pinned = false;
+  siteMarkers.forEach(x => x.el.classList.remove('active'));
+  $('date-btn').classList.remove('win-open', 'win-closed');
+
+  c.className = 'glass';
+  c.style.setProperty('--c', b.color || 'var(--accent)');
+
+  const p = key === 'sun' ? [0, 0, 0] : (lastPos?.[key] || [0, 0, 0]);
+  const rSun = Math.hypot(...p);
+  const pEarth = lastPos?.earth || [0, 0, 0];
+  const rEarth = Math.hypot(p[0] - pEarth[0], p[1] - pEarth[1], p[2] - pEarth[2]);
+  const pMoon = lastPos?.moon || [0, 0, 0];
+  const rMoon = Math.hypot(p[0] - pMoon[0], p[1] - pMoon[1], p[2] - pMoon[2]);
+
+  let earthRow = '';
+  if (key === 'earth') {
+    earthRow = `<dt>From Moon</dt><dd>${(rMoon / 1000).toFixed(0)}k km</dd>`;
+  } else if (key === 'moon') {
+    earthRow = `<dt>From Earth</dt><dd>${(rMoon / 1000).toFixed(0)}k km</dd>`;
+  } else {
+    earthRow = `<dt>From Earth</dt><dd>${(rEarth / E.AU_KM).toFixed(3)} AU · ${(rEarth / 1e6).toFixed(1)} M km</dd>`;
+  }
+
+  const sunRow = key === 'sun'
+    ? '<dt>From Sun</dt><dd>0 AU (System Center)</dd>'
+    : `<dt>From Sun</dt><dd>${(rSun / E.AU_KM).toFixed(3)} AU · ${(rSun / 1e6).toFixed(1)} M km</dd>`;
+
+  const rad = b.radius ?? pInfo.radiusKm;
+  const radStr = rad ? `${rad.toLocaleString()} km` : '—';
+  const perStr = pInfo.period || (b.periodDays ? `${b.periodDays.toFixed(1)} d` : '—');
+
+  c.innerHTML = `
+    <span class="status">${esc(pInfo.type || 'Celestial Body')}</span>
+    <h3>${esc(b.name)}</h3>
+    <dl>
+      <dt>Date</dt><dd id="card-date">${esc(shortUtcDate(state.t))}</dd>
+      ${sunRow}
+      ${earthRow}
+      <dt>Period</dt><dd>${esc(perStr)}</dd>
+      <dt>Radius</dt><dd>${esc(radStr)}</dd>
+      <dt>Gravity</dt><dd>${esc(pInfo.gravity || '—')}</dd>
+    </dl>
+    <div class="why">
+      <div class="sec">Summary</div>
+      <p style="margin:4px 0 0;font-size:12px;line-height:1.45;color:#cbd5e1;">${esc(pInfo.summary || '')}</p>
+      ${pInfo.missionNote ? `<p style="margin:6px 0 0;font-size:11.5px;line-height:1.4;color:var(--muted);">${esc(pInfo.missionNote)}</p>` : ''}
+    </div>
+    <div class="actions" style="margin-top:10px;">
+      <button class="text" data-focus-body="${esc(key)}" style="background:var(--text);color:var(--bg);font-weight:600;width:100%;text-align:center;">Focus camera</button>
+    </div>
+    <div class="hint">Click to pin</div>
+  `;
+
+  c.querySelector('[data-focus-body]').onclick = e => {
+    e.stopPropagation();
+    if (key === 'moon') cameraPreset('moon', lastPos);
+    else if (key === 'earth') cameraPreset('earth', lastPos);
+    else if (['mercury', 'venus', 'mars', 'sun'].includes(key)) cameraPreset('inner', lastPos);
+    else cameraPreset('all', lastPos);
+  };
+
+  c.hidden = false;
+  c.style.animation = 'none'; void c.offsetWidth; c.style.animation = '';
+  positionCard();
 }
 
 function hideCard(force) {
   if (card.pinned && !force) return;
-  card.m = null; card.pinned = false;
+  card.m = null;
+  card.bodyKey = null;
+  card.pinned = false;
   $('card').hidden = true;
   siteMarkers.forEach(x => x.el.classList.remove('active'));
+  updateCardWindow();
+  updateMoonSummary();
 }
-function scheduleHide() { cancelHide(); card.timer = setTimeout(() => hideCard(false), 180); }
+function scheduleHide() { cancelHide(); card.timer = setTimeout(() => hideCard(false), 320); }
 function cancelHide() { clearTimeout(card.timer); }
 
 const _v = new THREE.Vector3();
 function positionCard() {
-  if (!card.m) return;
-  card.m.obj.getWorldPosition(_v).project(camera);
+  if (!card.m && !card.bodyKey) return;
   const c = $('card');
-  const W = view.clientWidth, H = view.clientHeight, cw = c.offsetWidth || 280, ch = c.offsetHeight || 160;
-  const x = (_v.x + 1) / 2 * W, y = (1 - _v.y) / 2 * H;
-  // Keep the card on screen: clamp horizontally, and flip below the marker if it would be cut off at the top.
-  // On narrow screens, or when it fits neither above nor below, show it as a bottom sheet that scrolls.
-  const above = y - ch - 16 >= 8, below = y + ch + 16 <= H;
-  // Never slide under the open settings panel: its right edge is the card's left limit.
+  const W = view.clientWidth, H = view.clientHeight;
+  const cw = c.offsetWidth || 318, ch = c.offsetHeight || 160;
+
+  let x, y;
+  if (card.bodyKey) {
+    if (card.bodyKey === 'moon') _v.set(0, 0, 0);
+    else if (bodies[card.bodyKey]?.obj) bodies[card.bodyKey].obj.getWorldPosition(_v);
+    else return;
+    _v.project(camera);
+    if (_v.z < -1 || _v.z > 1) { c.hidden = true; return; }
+    c.hidden = false;
+    x = (_v.x + 1) / 2 * W; y = (1 - _v.y) / 2 * H;
+  } else {
+    card.m.obj.getWorldPosition(_v).project(camera);
+    x = (_v.x + 1) / 2 * W; y = (1 - _v.y) / 2 * H;
+  }
+
+  const topEl = $('top');
+  const minTop = Math.max(46, topEl && !topEl.classList.contains('closed') ? topEl.getBoundingClientRect().bottom + 10 : 46);
   const panel = $('left'), vr = view.getBoundingClientRect();
-  const minLeft = panel && !panel.classList.contains('collapsed') ? panel.getBoundingClientRect().right - vr.left + 8 : 8;
-  const sheet = W < 600 || (!above && !below) || W - minLeft < cw + 8;
+  const minLeft = panel && !panel.classList.contains('collapsed') ? panel.getBoundingClientRect().right - vr.left + 8 : 12;
+
+  const sheet = W < 600 || W - minLeft < cw + 8;
   c.classList.toggle('sheet', sheet);
-  if (sheet) { c.style.left = ''; c.style.top = ''; return; }
+  if (sheet) { c.classList.remove('dock-side', 'below'); c.style.left = ''; c.style.top = ''; return; }
+
+  // When inspecting Moon surface markers on desktop, dock #card outside the Moon limb so sibling sites never get covered.
+  if (card.m && !card.bodyKey && W >= 820) {
+    const camDist = camera.position.length();
+    const mProj = _v.set(0, 0, 0).project(camera);
+    const moonCx = (mProj.x + 1) / 2 * W;
+    const halfFov = (camera.fov * Math.PI / 180) * 0.5;
+    const moonR = halfFov > 0 ? (H * 0.5) * (MOON_R / Math.max(MOON_R + 1, camDist * Math.tan(halfFov))) : 180;
+    const rightSlot = Math.max(x + 24, moonCx + moonR + 18);
+    const leftSlot = Math.min(x - cw - 24, moonCx - moonR - 18 - cw);
+    let sideLeft = Math.min(W - cw - 14, rightSlot);
+    if (sideLeft < minLeft && leftSlot >= minLeft) sideLeft = leftSlot;
+    sideLeft = Math.max(minLeft, Math.min(W - cw - 14, sideLeft));
+    const sideTop = Math.max(minTop, Math.min(H - ch - 12, y - ch * 0.45));
+    c.classList.remove('below');
+    c.classList.add('dock-side');
+    c.style.left = `${Math.round(sideLeft)}px`;
+    c.style.top = `${Math.round(sideTop)}px`;
+    return;
+  }
+
+  c.classList.remove('dock-side');
   c.style.left = `${Math.max(minLeft + cw / 2, Math.min(W - cw / 2 - 8, x))}px`;
-  c.style.top = `${y}px`;
+
+  const above = (y - ch - 14 >= minTop);
   c.classList.toggle('below', !above);
+
+  const topY = above ? Math.max(minTop + ch + 14, Math.min(H - 12, y)) : Math.max(minTop + 8, Math.min(H - ch - 22, y));
+  c.style.top = `${topY}px`;
 }
 
 // ---------- camera moves ----------
 
 let fly = null;
-function flyTo(dir, dist, ms = 1200) {
-  const from = camera.position.clone(), to = dir.clone().normalize().multiplyScalar(dist);
-  fly = { from, to, t0: performance.now(), ms };
+function setActiveCam(name) {
+  document.querySelectorAll('[data-cam]').forEach(b => b.classList.toggle('active', b.dataset.cam === name));
+}
+function focusPoint(focus = state.camFocus, pos = lastPos) {
+  if (!pos) return new THREE.Vector3();
+  if (focus === 'earth') return new THREE.Vector3(...sub(pos.earth, pos.moon));
+  if (focus === 'sun') return new THREE.Vector3(...sub(pos.sun, pos.moon));
+  return new THREE.Vector3();
+}
+function flyTo(dir, dist, focus = state.camFocus, ms = 1200) {
+  state.camFocus = focus;
+  controls.minDistance = focus === 'moon' ? MOON_R + 12 : focus === 'earth' ? 30000 : 3e6;
+  const fromOffset = camera.position.clone().sub(controls.target);
+  fly = { fromOffset, fromTarget: controls.target.clone(), toDir: dir.clone().normalize(), toDist: dist, t0: performance.now(), ms };
 }
 function stepFly(now) {
   if (!fly) return;
   const k = Math.min(1, (now - fly.t0) / fly.ms), e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
-  // Interpolate direction on the sphere and distance logarithmically.
-  const d0 = fly.from.length(), d1 = fly.to.length();
-  const dir = fly.from.clone().normalize().lerp(fly.to.clone().normalize(), e).normalize();
-  camera.position.copy(dir.multiplyScalar(d0 * (d1 / d0) ** e));
+  const targetNow = focusPoint();
+  controls.target.lerpVectors(fly.fromTarget, targetNow, e);
+  const d0 = Math.max(1, fly.fromOffset.length()), d1 = fly.toDist;
+  const dir = fly.fromOffset.clone().normalize().lerp(fly.toDir, e).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir, d0 * (d1 / d0) ** e);
   if (k >= 1) fly = null;
 }
 
 function cameraPreset(name, pos) {
+  setActiveCam(name);
   const toEarth = new THREE.Vector3(...sub(pos.earth, pos.moon)).normalize();
   const side = new THREE.Vector3().crossVectors(toEarth, new THREE.Vector3(0, 0, 1)).normalize();
-  if (name === 'moon') flyTo(toEarth.clone().multiplyScalar(0.55).add(new THREE.Vector3(0, 0, -0.85)), 6500);
-  if (name === 'earth') flyTo(side.clone().multiplyScalar(-1).add(toEarth.clone().multiplyScalar(-0.5)).add(new THREE.Vector3(0, 0, 0.35)), 9.5e5);
-  if (name === 'inner') flyTo(new THREE.Vector3(0.15, -0.35, 1), 6.5e8);
-  if (name === 'all') flyTo(new THREE.Vector3(0.1, -0.4, 1), 1.1e10);
+  if (name === 'moon') flyTo(toEarth.clone().multiplyScalar(0.55).add(new THREE.Vector3(0, 0, -0.85)), 6500, 'moon');
+  if (name === 'earth') flyTo(side.clone().multiplyScalar(-0.7).add(toEarth.clone().multiplyScalar(-0.55)).add(new THREE.Vector3(0, 0, 0.72)), 1.25e6, 'earth');
+  if (name === 'inner') flyTo(new THREE.Vector3(0.15, -0.45, 1), 6.2e8, 'sun');
+  if (name === 'all') flyTo(new THREE.Vector3(0.08, -0.38, 1), 1.05e10, 'sun');
 }
 
 // ---------- per-frame scene update ----------
@@ -631,46 +1064,91 @@ function updateScene() {
   moonFrame.matrix.makeRotationZ(o.node).multiply(new THREE.Matrix4().makeRotationX(o.incl)).multiply(new THREE.Matrix4().makeRotationZ(o.w));
   moonFrame.matrixWorldNeedsUpdate = true;
 
-  // Moon's orbit around Earth over the last sidereal month, in the Moon-centred frame.
+  // Seamless closed Moon orbit around Earth entering directly into the Moon center.
   const mo = moonOrbit.geometry.attributes.position, em = sub(pos.earth, moon);
   for (let i = 0; i < MOON_ORBIT_N; i++) {
-    const g = E.moonGeo(d - MOON_SIDEREAL * i / (MOON_ORBIT_N - 1));
-    mo.setXYZ(i, em[0] + g[0], em[1] + g[1], em[2] + g[2]);
+    if (i === 0) {
+      mo.setXYZ(0, 0, 0, 0);
+      continue;
+    }
+    const u = i / MOON_ORBIT_N;
+    const w = 0.5 - 0.5 * Math.cos(Math.PI * u);
+    const gf = E.moonGeo(d + u * MOON_SIDEREAL);
+    const gb = E.moonGeo(d - (1 - u) * MOON_SIDEREAL);
+    mo.setXYZ(i, em[0] + gf[0] * (1 - w) + gb[0] * w, em[1] + gf[1] * (1 - w) + gb[1] * w, em[2] + gf[2] * (1 - w) + gb[2] * w);
   }
   mo.needsUpdate = true;
-  // The orbit starts and ends at the Moon (origin); skip the stretch inside ~4 Moon radii so the
-  // line does not cut across the Moon's face.
-  let a = 0, b = MOON_ORBIT_N - 1;
-  const r2 = (16 * MOON_R * MOON_R);
-  const d2 = k => mo.getX(k) ** 2 + mo.getY(k) ** 2 + mo.getZ(k) ** 2;
-  while (a < b && d2(a) < r2) a++;
-  while (b > a && d2(b) < r2) b--;
-  moonOrbit.geometry.setDrawRange(a, b - a + 1);
 
-  if (lastTrailT === null || Math.abs(state.t - lastTrailT) > 36e5) { updateTrails(d); lastTrailT = state.t; }
+  const mt = moonTrail.geometry.attributes.position;
+  for (let i = 0; i < MOON_TRAIL_N - 1; i++) {
+    const g = E.moonGeo(d - MOON_TRAIL_DAYS + MOON_TRAIL_DAYS * i / (MOON_TRAIL_N - 1));
+    mt.setXYZ(i, em[0] + g[0], em[1] + g[1], em[2] + g[2]);
+  }
+  mt.setXYZ(MOON_TRAIL_N - 1, 0, 0, 0);
+  mt.needsUpdate = true;
+
+  if (!fly) {
+    const curTarget = focusPoint();
+    camera.position.add(curTarget.clone().sub(controls.target));
+    controls.target.copy(curTarget);
+  }
+
+  // Dim unrelated outer planet orbits cleanly when inspecting Earth–Moon close up.
+  const isEarthFocus = state.camFocus === 'earth';
+  for (const key of PLANETS) {
+    if (orbitLines[key]) orbitLines[key].material.opacity = isEarthFocus ? (key === 'earth' ? 0.2 : 0.1) : 0.36;
+  }
+
+  if (lastTrailT === null || Math.abs(state.t - lastTrailT) > 36e5) { updateTrails(d, pos); lastTrailT = state.t; }
   updateOrbits(d);
 }
 
 function updateMarkers() {
   const rot = new THREE.Matrix4().extractRotation(moonFrame.matrix);
   const camDir = camera.position.clone();
-  const dist = camera.position.length();
-  const near = dist < MOON_R * 40;
+  const distMoon = camera.position.length();
+  const distTarget = camera.position.distanceTo(controls.target);
+  const near = distMoon < MOON_R * 40;
   const cats = { hist: $('cat-hist').checked, planned: $('cat-planned').checked, cand: $('cat-cand').checked };
   for (const m of siteMarkers) {
     const wn = m.normal.clone().applyMatrix4(rot);
     const p = wn.clone().multiplyScalar(MOON_R);
     const toCam = camDir.clone().sub(p).normalize();
     m.facing = wn.dot(toCam) > 0.06; // far side and grazing limb
-    const closeUp = m.area && dist < MOON_R + 60 * (AREA[m.cat]?.size ?? 7.5); // up close the patch is the landing zone
+    const closeUp = m.area && distMoon < MOON_R + 60 * (AREA[m.cat]?.size ?? 7.5); // up close the patch is the landing zone
     m.obj.visible = near && cats[m.cat] && m.facing && !closeUp;
     if (m.area) m.area.visible = cats[m.cat]; // depth test hides areas on the far side
   }
   if (card.m && !(card.m.facing && cats[card.m.cat])) hideCard(true);
   const labelsOn = $('opt-labels').checked;
-  for (const key of ['sun', ...PLANETS]) bodies[key].label.visible = labelsOn;
-  bodies.moon.label.visible = labelsOn && dist > MOON_R * 40;
+  for (const key of ['sun', 'moon', ...PLANETS]) bodies[key].label.visible = false;
+  if (labelsOn) {
+    const W = view.clientWidth, H = view.clientHeight;
+    const placed = [];
+    const order = state.camFocus === 'earth'
+      ? ['earth', 'moon', 'sun']
+      : (state.camFocus === 'sun' && distTarget > 2.5e9)
+        ? ['sun', 'jupiter', 'saturn', 'uranus', 'neptune', 'earth', 'mars', 'venus', 'mercury']
+        : ['sun', 'earth', 'mars', 'venus', 'mercury', 'jupiter', 'saturn', 'uranus', 'neptune', 'moon'];
+    const tmp = new THREE.Vector3();
+    for (const key of order) {
+      if (key === 'moon' && distMoon < MOON_R * 40) continue;
+      if (key === 'moon' && state.camFocus === 'sun') continue;
+      if (key === 'moon' || key === 'sun' || PLANETS.includes(key)) {
+        if (key === 'moon') tmp.set(0, 0, 0);
+        else bodies[key].obj.getWorldPosition(tmp);
+        tmp.project(camera);
+        if (tmp.z < -1 || tmp.z > 1) continue;
+        const sx = (tmp.x * 0.5 + 0.5) * W, sy = (-tmp.y * 0.5 + 0.5) * H;
+        if (sx < -40 || sx > W + 40 || sy < -20 || sy > H + 20) continue;
+        if (placed.some(([px, py]) => Math.abs(sx - px) < 64 && Math.abs(sy - py) < 16)) continue;
+        placed.push([sx, sy]);
+        bodies[key].label.visible = true;
+      }
+    }
+  }
   moonOrbit.visible = $('opt-orbits').checked;
+  moonTrail.visible = $('opt-trails').checked && distMoon > MOON_R * 12;
 }
 
 // ---------- time control ----------
@@ -686,6 +1164,8 @@ function syncTime() {
   $('date-time').textContent = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
   if (document.activeElement !== $('date')) $('date').value = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   if (document.activeElement !== $('time')) $('time').value = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  updateCardWindow();
+  updateMoonSummary();
 }
 
 function setPlaying(on) {
@@ -752,46 +1232,121 @@ function wirePanels() {
   $('opt-trails').onchange = () => Object.values(trailLines).forEach(l => (l.visible = $('opt-trails').checked));
   $('opt-orbits').onchange = () => Object.values(orbitLines).forEach(l => (l.visible = $('opt-orbits').checked));
   $('opt-shade').onchange = () => (moonUniforms.shade.value = $('opt-shade').checked ? 1 : 0);
+  $('opt-planet-hover').onchange = () => {
+    const on = $('opt-planet-hover').checked;
+    document.body.classList.toggle('planet-hover', on);
+    if (!on && card.bodyKey) hideCard(true);
+  };
+  document.body.classList.toggle('planet-hover', $('opt-planet-hover').checked);
+
+  ['cat-hist', 'cat-planned', 'cat-cand'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('change', () => updateMoonSummary());
+  });
+
   document.querySelectorAll('[data-cam]').forEach(b => (b.onclick = () => cameraPreset(b.dataset.cam, lastPos)));
   const c = $('card');
   c.addEventListener('pointerenter', cancelHide);
   c.addEventListener('pointerleave', scheduleHide);
   c.addEventListener('click', e => { e.stopPropagation(); card.pinned = true; c.classList.add('open'); });
-  // Hover and click on the shaded landing areas themselves (not only on the dot).
+
+  // Hover and click on shaded landing areas or celestial bodies
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   let areaHover = null, down = null, pending = false;
   const hitArea = (x, y) => {
     const r = renderer.domElement.getBoundingClientRect();
     ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    const hit = ray.intersectObjects(areaMeshes.filter(a => a.parent.visible), false)[0];
+    const hit = ray.intersectObjects(areaMeshes.filter(a => a.parent && a.parent.visible), false)[0];
     return hit ? hit.object.userData.site : null;
   };
+
+  const pickBodyAt = (clientX, clientY) => {
+    if (!$('opt-planet-hover')?.checked) return null;
+    const r = renderer.domElement.getBoundingClientRect();
+    const px = clientX - r.left, py = clientY - r.top;
+    const distMoon = camera.position.length();
+
+    // 1. Check screen distance to projected body centers (16 px radius)
+    let closestKey = null, closestDist = 16;
+    const tmp = new THREE.Vector3();
+    for (const key of ['sun', 'moon', ...PLANETS]) {
+      if (key === 'moon' && distMoon <= MOON_R * 8) continue;
+      if (key === 'moon') tmp.set(0, 0, 0);
+      else if (bodies[key]?.obj) bodies[key].obj.getWorldPosition(tmp);
+      else continue;
+      tmp.project(camera);
+      if (tmp.z < -1 || tmp.z > 1) continue;
+      const sx = (tmp.x * 0.5 + 0.5) * r.width;
+      const sy = (-tmp.y * 0.5 + 0.5) * r.height;
+      const d = Math.hypot(px - sx, py - sy);
+      if (d < closestDist) {
+        closestDist = d;
+        closestKey = key;
+      }
+    }
+    if (closestKey) return closestKey;
+
+    // 2. Raycast against body meshes
+    ndc.set((px / r.width) * 2 - 1, -(py / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const pickMeshes = [bodies.sun?.obj, moonMesh, ...PLANETS.map(k => bodies[k]?.obj)].filter(Boolean);
+    const hits = ray.intersectObjects(pickMeshes, true);
+    for (const hit of hits) {
+      let cur = hit.object;
+      while (cur && !cur.userData?.bodyKey) cur = cur.parent;
+      const k = cur?.userData?.bodyKey;
+      if (k === 'moon' && distMoon <= MOON_R * 8) continue;
+      if (k) return k;
+    }
+    return null;
+  };
+
   renderer.domElement.addEventListener('pointermove', e => {
     if (pending || e.buttons) return; // throttle; ignore while dragging the camera
     pending = true;
     requestAnimationFrame(() => {
       pending = false;
       const m = hitArea(e.clientX, e.clientY);
-      if (m && !card.pinned) { showCard(m); cancelHide(); }
-      else if (!m && areaHover && !card.pinned) scheduleHide();
+      if (m && !card.pinned) {
+        showCard(m); cancelHide();
+        renderer.domElement.style.cursor = 'pointer';
+      } else if (!m && $('opt-planet-hover')?.checked) {
+        const bodyKey = pickBodyAt(e.clientX, e.clientY);
+        if (bodyKey && !card.pinned) {
+          showPlanetCard(bodyKey); cancelHide();
+          renderer.domElement.style.cursor = 'pointer';
+        } else {
+          if (!card.pinned && (areaHover || card.bodyKey)) scheduleHide();
+          renderer.domElement.style.cursor = '';
+        }
+      } else {
+        if (!card.pinned && (areaHover || card.bodyKey)) scheduleHide();
+        renderer.domElement.style.cursor = '';
+      }
       areaHover = m;
-      renderer.domElement.style.cursor = m ? 'pointer' : '';
     });
   });
   renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
   renderer.domElement.addEventListener('click', e => {
-    const moved = down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5; // a camera drag, not a click
-    const m = moved ? null : hitArea(e.clientX, e.clientY);
+    const moved = down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5;
+    if (moved) return;
+    const m = hitArea(e.clientX, e.clientY);
     if (m) { showCard(m); card.pinned = true; $('card').classList.add('open'); return; }
-    if (!moved) { hideCard(true); togglePicker(false); }
+    if ($('opt-planet-hover')?.checked) {
+      const bodyKey = pickBodyAt(e.clientX, e.clientY);
+      if (bodyKey) { showPlanetCard(bodyKey); card.pinned = true; $('card').classList.add('open'); return; }
+    }
+    state.activeSite = null;
+    hideCard(true);
+    togglePicker(false);
   });
   document.addEventListener('keydown', e => {
     if (e.target.matches?.('input, select, textarea')) return;
     if (e.key === ' ') { e.preventDefault(); if (e.target.matches?.('button')) e.target.blur(); setPlaying(!state.playing); }
     if (e.key === 'ArrowRight') setTime(state.t + DAY);
     if (e.key === 'ArrowLeft') setTime(state.t - DAY);
-    if (e.key === 'Escape') { hideCard(true); togglePicker(false); }
+    if (e.key === 'Escape') { state.activeSite = null; hideCard(true); togglePicker(false); }
   });
 }
 
@@ -801,9 +1356,9 @@ let lastFrame = performance.now(), lastUi = 0;
 function frame(now) {
   const dt = (now - lastFrame) / 1000; lastFrame = now;
   if (state.playing) state.t += dt * DAY; // 1 day per second
+  updateScene();
   stepFly(now);
   controls.update();
-  updateScene();
   updateMarkers();
   positionCard();
   if (state.playing && now - lastUi > 100) { lastUi = now; syncTime(); }
@@ -820,7 +1375,13 @@ updateScene();
 applyTheme(state.theme);
 wireTime();
 wirePanels();
+setActiveCam('moon');
 if (window.innerWidth < 600 || EMBED) $('left-toggle').click(); // small screens and embeds: settings tucked away
+if (window.innerWidth >= 720 && !EMBED) {
+  $('top').classList.remove('closed');
+  $('top-toggle').setAttribute('aria-expanded', 'true');
+  $('top-toggle').setAttribute('aria-label', 'Hide time controls');
+}
 if (EMBED) document.body.classList.add('embed');
 resize();
 // Initial view: close to the Moon, looking at the south pole with Earth's direction in mind.
@@ -831,4 +1392,16 @@ resize();
 syncTime();
 requestAnimationFrame(frame);
 loadMoon().catch(e => { $('loading').textContent = `Could not load Moon textures: ${e.message || e}`; });
-Promise.all([loadSites(), loadHeights().catch(() => null)]).then(([sites]) => addSites(sites));
+loadSites().then(sites => {
+  addSites(sites);
+  loadHeights().catch(() => null).then(() => {
+    for (const m of siteMarkers) {
+      const h = heightKm(m.site.lat_deg, m.site.lon_deg);
+      m.obj.position.copy(m.normal).multiplyScalar(MOON_R + h + 0.3);
+      if (m.area) {
+        moonFrame.remove(m.area);
+        m.area = makeArea(m);
+      }
+    }
+  });
+});
