@@ -4,7 +4,7 @@
 'use strict';
 
 (() => {
-  const V = '20261115f';
+  const V = '20261115h';
 
   function build() {
     const css = document.createElement('style');

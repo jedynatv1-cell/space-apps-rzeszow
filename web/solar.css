@@ -134,3 +134,20 @@ svg .fill { fill: currentColor; stroke: none; }
 #card.below { transform: translate(-50%, 16px); transform-origin: 50% 0; animation-name: card-in-below; }
 @keyframes card-in-below { from { opacity: 0; transform: translate(-50%, 8px) scale(.96); } }
 #card.below::after { bottom: auto; top: -6px; transform: translateX(-50%) rotate(225deg); }
+
+/* Hover card: why here + live conditions */
+#card .sec { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 10px 0 4px; }
+#card .why ul { margin: 0; padding-left: 16px; font-size: 12.5px; line-height: 1.45; }
+#card .why li { margin: 1px 0; }
+#card .cond-body { font-size: 12.5px; color: var(--muted); }
+#card .cond dl { margin-top: 4px; }
+#card .verdict { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text); }
+#card .verdict i { width: 9px; height: 9px; border-radius: 50%; background: var(--v); box-shadow: 0 0 0 3px color-mix(in srgb, var(--v) 25%, transparent); }
+#card .verdict small { font-weight: 400; color: var(--muted); }
+#card .verdict.good { --v: #3fd68f; } #card .verdict.marginal { --v: #ffb020; } #card .verdict.poor { --v: #ff5d5d; }
+@media (max-width: 600px) { #card { width: min(300px, calc(100vw - 24px)); } }
+
+/* Bottom sheet on phones (and when the card fits neither above nor below its marker). */
+#card.sheet { position: fixed; left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 62vh; overflow-y: auto; transform: none; animation: sheet-in .22s ease; }
+#card.sheet::after { display: none; }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(12px); } }
