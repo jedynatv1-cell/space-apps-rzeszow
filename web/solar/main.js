@@ -4,8 +4,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import * as E from './ephem.js?v=20261115h';
-import { SITE_INFO } from './site-info.js?v=20261115h';
+import * as E from './ephem.js?v=20261115i';
+import { SITE_INFO } from './site-info.js?v=20261115i';
 
 const $ = id => document.getElementById(id);
 // Embed mode (solar.html?embed=1): shown inside a panel on index.html. Settings start collapsed and
@@ -456,7 +456,8 @@ function whyHtml(m, info) {
     items = ['Long sunlit periods for solar power', 'Direct line of sight to Earth for radio contact',
       'Near permanently shadowed craters that may hold water ice'];
   } else if (info.text) {
-    items = info.text.split(/(?<=\.)\s+|;\s+/).map(t => t.replace(/\.$/, '')).filter(Boolean).slice(0, 3);
+    items = info.text.split(/(?<=\.)\s+|;\s+/).map(t => t.replace(/\.$/, '')).filter(Boolean).slice(0, 3)
+      .map(t => t.charAt(0).toUpperCase() + t.slice(1));
   }
   if (!items.length) return '';
   const title = m.cat === 'hist' ? 'About this landing' : 'Why here';
@@ -561,10 +562,13 @@ function positionCard() {
   // Keep the card on screen: clamp horizontally, and flip below the marker if it would be cut off at the top.
   // On narrow screens, or when it fits neither above nor below, show it as a bottom sheet that scrolls.
   const above = y - ch - 16 >= 8, below = y + ch + 16 <= H;
-  const sheet = W < 600 || (!above && !below);
+  // Never slide under the open settings panel: its right edge is the card's left limit.
+  const panel = $('left'), vr = view.getBoundingClientRect();
+  const minLeft = panel && !panel.classList.contains('collapsed') ? panel.getBoundingClientRect().right - vr.left + 8 : 8;
+  const sheet = W < 600 || (!above && !below) || W - minLeft < cw + 8;
   c.classList.toggle('sheet', sheet);
   if (sheet) { c.style.left = ''; c.style.top = ''; return; }
-  c.style.left = `${Math.max(cw / 2 + 8, Math.min(W - cw / 2 - 8, x))}px`;
+  c.style.left = `${Math.max(minLeft + cw / 2, Math.min(W - cw / 2 - 8, x))}px`;
   c.style.top = `${y}px`;
   c.classList.toggle('below', !above);
 }
