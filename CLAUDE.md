@@ -42,7 +42,7 @@ users compare sites/dates quickly. Focus: lunar south pole. Challenge text: `doc
 ## Conventions
 - East-positive longitude −180..180; elevation relative to the 1737.4 km sphere tangent plane (same as Horizons); azimuth clockwise from north.
 - Use `MOON_ME_DE440_ME421_FRAME` in ANISE — `MOON_ME_FRAME` fails with these kernels.
-- `data/raw/` (kernels, DEMs, ~620 MB) is git-ignored: never commit it.
+- `data/raw/kernels/` (~45 MB) is committed so `cargo run` works after a clone; `data/raw/dem/` (~580 MB, files over GitHub's 100 MB limit) stays git-ignored: never commit it.
 - Team docs in `docs/` are in Polish; code, comments, commit messages and anything for the submission are in English.
 - Submission materials must be in English; AI ("SI") use must be disclosed; no NASA logos in generated content.
 - Commit messages end with the `Co-Authored-By` trailer when Claude authors them.

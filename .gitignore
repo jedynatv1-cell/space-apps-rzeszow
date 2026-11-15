@@ -16,8 +16,9 @@ __pycache__/
 .env.*
 !.env.example
 
-# Large datasets — keep raw downloads out of git
-/data/raw/
+# Large datasets — keep raw downloads out of git, except the NAIF kernels (~45 MB, needed to run)
+/data/raw/*
+!/data/raw/kernels/
 
 # Per-laptop Claude config (role, personal overrides)
 .claude/role.local.json

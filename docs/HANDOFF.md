@@ -29,6 +29,8 @@ gh repo clone jedynatv1-cell/space-apps-rzeszow
 
 ### POZA gitem: trzeba skopiować ręcznie albo pobrać ponownie (`data/raw/` jest w `.gitignore`)
 
+> **Od 15.11 ~11:30 kernele NAIF (3 pliki, ~45 MB) są w gicie** (`data/raw/kernels/`), więc po `git clone` serwer startuje od razu. Pobrać trzeba tylko DEM (pliki > 100 MB, limit GitHuba).
+
 | Plik | Rozmiar (B) | Skąd |
 |---|---|---|
 | `data/raw/kernels/de440s.bsp` | 32 726 016 | https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp |

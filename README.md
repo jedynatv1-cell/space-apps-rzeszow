@@ -19,8 +19,14 @@ Team project for the Space Apps hackathon in Rzeszów: Lunar Landing Site Naviga
 
 ## Quick start
 
-1. Put the NAIF kernels in `data/raw/kernels/` (git-ignored, ~45 MB — URLs in [RESEARCH.md](docs/RESEARCH.md) TL;DR):
-   `de440s.bsp`, `moon_pa_de440_200625.bpc`, `moon_fk_de440.epa`
+1. The NAIF kernels (`de440s.bsp`, `moon_pa_de440_200625.bpc`, `moon_fk_de440.epa`, ~45 MB) are already in `data/raw/kernels/`.
+   Optional but recommended: download the LOLA terrain (~580 MB, too large for GitHub) for real horizons; without it the horizon is a smooth sphere:
+   ```bash
+   mkdir -p data/raw/dem && cd data/raw/dem
+   B=https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img
+   for f in ldem_80s_40m ldem_75s_120m; do curl -fLO $B/$f.lbl; curl -fL -C - -O $B/$f.img; done
+   cd ../../..
+   ```
 2. Run the server and open http://localhost:3000 (sky plot, timeline, compare; `?recorded=1` replays saved responses without a server). 3D Moon-centred view: http://localhost:3000/solar.html
 
 ```bash
