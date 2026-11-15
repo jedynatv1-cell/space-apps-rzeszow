@@ -48,7 +48,10 @@
         "src/metrics.rs",
         "src/api.rs",
         "src/ephem.rs",
-        "src/site.rs"
+        "src/site.rs",
+        "src/ppo.rs",
+        "data/ppo/**",
+        "docs/PPO.md"
       ]
     },
     "W3": {
