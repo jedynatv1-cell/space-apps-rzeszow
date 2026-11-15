@@ -182,6 +182,11 @@ svg .fill { fill: currentColor; stroke: none; }
   transition: background 0.15s, border-color 0.15s;
 }
 .chips button:hover { background: var(--hover); border-color: rgba(255, 255, 255, 0.28); }
+.chips button.active {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #e0f2fe;
+}
 
 .link {
   display: flex; align-items: center; justify-content: center; width: 100%; margin-top: 12px;
@@ -199,12 +204,17 @@ svg .fill { fill: currentColor; stroke: none; }
 .switch .key + .key { margin-left: 4px; }
 
 /* ---------- planet labels and site markers ---------- */
+/* Outer .plabel stays 0x0 so CSS2DRenderer centers (0,0) squarely on the body; inner span keeps the dot at exact center. */
 .plabel {
-  color: var(--text); font: 500 10.5px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
-  pointer-events: none; display: flex; align-items: center; gap: 6px; white-space: nowrap;
-  transform: translateX(50%); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95); opacity: 0.85;
+  width: 0; height: 0; position: relative; pointer-events: none;
 }
-.plabel i { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+.plabel-tag {
+  position: absolute; left: -3px; top: 0; transform: translateY(-50%);
+  color: var(--text); font: 500 10.5px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95); opacity: 0.9;
+}
+.plabel-tag i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex: none; box-shadow: 0 0 6px currentColor; }
 .site { width: 24px; height: 24px; display: grid; place-items: center; cursor: pointer; pointer-events: auto; }
 .site i { width: 19px; height: 19px; display: block; color: var(--c); transition: transform 0.18s ease; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.95)); }
 .site svg { width: 100%; height: 100%; display: block; }

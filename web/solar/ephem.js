@@ -64,6 +64,25 @@ export function planetHelio(key, d) {
   ];
 }
 
+/** Closed Keplerian orbit ellipse (km, ecliptic J2000) for planet key at epoch d. */
+export function planetOrbit(key, d, n = 360) {
+  const T = d / 36525, [el, rt] = ELEMENTS[key];
+  const a = el[0] + rt[0] * T, e = el[1] + rt[1] * T, I = (el[2] + rt[2] * T) * D2R;
+  const wbar = el[4] + rt[4] * T, node = el[5] + rt[5] * T;
+  const w = (wbar - node) * D2R, O = node * D2R;
+  const cw = Math.cos(w), sw = Math.sin(w), cO = Math.cos(O), sO = Math.sin(O), cI = Math.cos(I), sI = Math.sin(I);
+  const b = Math.sqrt(1 - e * e);
+  const pts = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const E = (2 * Math.PI * i) / n;
+    const xp = a * (Math.cos(E) - e), yp = a * b * Math.sin(E);
+    pts[i * 3]     = AU_KM * ((cw * cO - sw * sO * cI) * xp + (-sw * cO - cw * sO * cI) * yp);
+    pts[i * 3 + 1] = AU_KM * ((cw * sO + sw * cO * cI) * xp + (-sw * sO + cw * cO * cI) * yp);
+    pts[i * 3 + 2] = AU_KM * ((sw * sI) * xp + (cw * sI) * yp);
+  }
+  return pts;
+}
+
 // Meeus ch. 47 terms: [D, M, M', F, coeff]
 const LON = [[0,0,1,0,6288774],[2,0,-1,0,1274027],[2,0,0,0,658314],[0,0,2,0,213618],[0,1,0,0,-185116],
   [0,0,0,2,-114332],[2,0,-2,0,58793],[2,-1,-1,0,57066],[2,0,1,0,53322],[2,-1,0,0,45758],[0,1,-1,0,-40923],

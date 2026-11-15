@@ -18,12 +18,13 @@ if (new URLSearchParams(location.search).get('show') === 'all') {
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const MOON_R = E.BODIES.moon.radius;
 const PLANETS = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
-const TRAIL_DAYS = 365, TRAIL_N = 366;
+const TRAIL_ARC = 0.28, TRAIL_N = 180;
 
 const state = {
   t: Date.now(),
   playing: false,
   theme: 'dark',
+  camFocus: 'moon',
 };
 
 // ---------- renderer, camera, controls ----------
@@ -43,12 +44,13 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 1e11);
 camera.up.set(0, 0, 1); // ecliptic north is up
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.enablePan = false;            // the Moon stays the centre
+controls.enablePan = false;            // target tracks Moon, Earth, or Sun cleanly
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.zoomSpeed = 1.6;
 controls.minDistance = MOON_R + 12;
 controls.maxDistance = 3e10;
+controls.addEventListener('start', () => { fly = null; });
 
 function resize() {
   const w = view.clientWidth, h = view.clientHeight;
@@ -222,12 +224,13 @@ function planetMaterial(map) {
 }
 
 const bodies = {};
-const MOON_ORBIT_N = 180, MOON_SIDEREAL = 27.3217;
-let moonOrbit = null;
+const MOON_ORBIT_N = 181, MOON_SIDEREAL = 27.3217;
+const MOON_TRAIL_N = 64, MOON_TRAIL_DAYS = 7.5;
+let moonOrbit = null, moonTrail = null;
 function makeLabel(text, color) {
   const el = document.createElement('div');
   el.className = 'plabel';
-  el.innerHTML = `<i style="background:${color}"></i>${esc(text)}`;
+  el.innerHTML = `<span class="plabel-tag"><i style="background:${color};color:${color}"></i>${esc(text)}</span>`;
   return new CSS2DObject(el);
 }
 
@@ -249,9 +252,18 @@ function buildBodies() {
   bodies.moon = { label: moonLabel };
   const mg = new THREE.BufferGeometry();
   mg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MOON_ORBIT_N * 3), 3));
-  moonOrbit = new THREE.Line(mg, new THREE.LineBasicMaterial({ color: 0xbfc5d2, transparent: true, opacity: 0.5, depthWrite: false }));
+  moonOrbit = new THREE.Line(mg, new THREE.LineBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.48, depthWrite: false }));
   moonOrbit.frustumCulled = false;
   scene.add(moonOrbit);
+
+  const mtg = new THREE.BufferGeometry();
+  mtg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MOON_TRAIL_N * 3), 3));
+  const mtc = new Float32Array(MOON_TRAIL_N * 4);
+  for (let i = 0; i < MOON_TRAIL_N; i++) mtc.set([0.88, 0.92, 0.98, (i / (MOON_TRAIL_N - 1)) ** 1.6 * 0.85], i * 4);
+  mtg.setAttribute('color', new THREE.BufferAttribute(mtc, 4));
+  moonTrail = new THREE.Line(mtg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }));
+  moonTrail.frustumCulled = false;
+  scene.add(moonTrail);
 
   for (const key of PLANETS) {
     const b = E.BODIES[key];
@@ -282,7 +294,7 @@ function makeTrail(key) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_N * 3), 3));
   const col = new Float32Array(TRAIL_N * 4), c = new THREE.Color(E.BODIES[key].color);
-  for (let i = 0; i < TRAIL_N; i++) { col.set([c.r, c.g, c.b, (i / (TRAIL_N - 1)) ** 1.5 * 0.95], i * 4); }
+  for (let i = 0; i < TRAIL_N; i++) { col.set([c.r, c.g, c.b, (i / (TRAIL_N - 1)) ** 1.6 * 0.78], i * 4); }
   g.setAttribute('color', new THREE.BufferAttribute(col, 4));
   const line = new THREE.Line(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }));
   line.frustumCulled = false;
@@ -293,8 +305,9 @@ function makeTrail(key) {
 function updateTrails(d) {
   for (const key of PLANETS) {
     const arr = trailLines[key].geometry.attributes.position;
+    const span = E.BODIES[key].periodDays * TRAIL_ARC;
     for (let i = 0; i < TRAIL_N; i++) {
-      const p = E.bodyHelio(key, d - TRAIL_DAYS + i * TRAIL_DAYS / (TRAIL_N - 1));
+      const p = E.bodyHelio(key, d - span + i * span / (TRAIL_N - 1));
       arr.setXYZ(i, p[0], p[1], p[2]);
     }
     arr.needsUpdate = true;
@@ -306,15 +319,11 @@ function updateOrbits(d) {
   if (orbitsFor !== null && Math.abs(d - orbitsFor) < 30) return; // elements change slowly
   orbitsFor = d;
   for (const key of PLANETS) {
-    const n = 360, per = E.BODIES[key].periodDays, pts = new Float32Array((n + 1) * 3);
-    for (let i = 0; i <= n; i++) {
-      const p = E.planetHelio(key === 'earth' ? 'emb' : key, d - per * i / n);
-      pts.set(p, i * 3);
-    }
+    const pts = E.planetOrbit(key === 'earth' ? 'emb' : key, d, 360);
     if (!orbitLines[key]) {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(pts, 3));
-      const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x7a8396, transparent: true, opacity: 0.35, depthWrite: false }));
+      const line = new THREE.LineLoop(g, new THREE.LineBasicMaterial({ color: 0x7a8396, transparent: true, opacity: 0.36, depthWrite: false }));
       line.frustumCulled = false;
       helio.add(line);
       orbitLines[key] = line;
@@ -548,7 +557,9 @@ function showCard(m) {
     c.querySelector('[data-fly]').onclick = e => {
       e.stopPropagation();
       hideCard(true); // do not cover the landing area we are flying to
-      flyTo(m.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix)), Math.min(camera.position.length(), MOON_R + Math.max(20, 20 * (AREA[m.cat]?.size ?? 7.5)))); // area spans ~100 px
+      setActiveCam('moon');
+      const rel = camera.position.distanceTo(controls.target);
+      flyTo(m.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix)), Math.min(rel, MOON_R + Math.max(20, 20 * (AREA[m.cat]?.size ?? 7.5))), 'moon'); // area spans ~100 px
     };
     c.hidden = false;
     c.style.animation = 'none'; void c.offsetWidth; c.style.animation = '';
@@ -589,27 +600,40 @@ function positionCard() {
 // ---------- camera moves ----------
 
 let fly = null;
-function flyTo(dir, dist, ms = 1200) {
-  const from = camera.position.clone(), to = dir.clone().normalize().multiplyScalar(dist);
-  fly = { from, to, t0: performance.now(), ms };
+function setActiveCam(name) {
+  document.querySelectorAll('[data-cam]').forEach(b => b.classList.toggle('active', b.dataset.cam === name));
+}
+function focusPoint(focus = state.camFocus, pos = lastPos) {
+  if (!pos) return new THREE.Vector3();
+  if (focus === 'earth') return new THREE.Vector3(...sub(pos.earth, pos.moon));
+  if (focus === 'sun') return new THREE.Vector3(...sub(pos.sun, pos.moon));
+  return new THREE.Vector3();
+}
+function flyTo(dir, dist, focus = state.camFocus, ms = 1200) {
+  state.camFocus = focus;
+  controls.minDistance = focus === 'moon' ? MOON_R + 12 : focus === 'earth' ? 30000 : 3e6;
+  const fromOffset = camera.position.clone().sub(controls.target);
+  fly = { fromOffset, fromTarget: controls.target.clone(), toDir: dir.clone().normalize(), toDist: dist, t0: performance.now(), ms };
 }
 function stepFly(now) {
   if (!fly) return;
   const k = Math.min(1, (now - fly.t0) / fly.ms), e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
-  // Interpolate direction on the sphere and distance logarithmically.
-  const d0 = fly.from.length(), d1 = fly.to.length();
-  const dir = fly.from.clone().normalize().lerp(fly.to.clone().normalize(), e).normalize();
-  camera.position.copy(dir.multiplyScalar(d0 * (d1 / d0) ** e));
+  const targetNow = focusPoint();
+  controls.target.lerpVectors(fly.fromTarget, targetNow, e);
+  const d0 = Math.max(1, fly.fromOffset.length()), d1 = fly.toDist;
+  const dir = fly.fromOffset.clone().normalize().lerp(fly.toDir, e).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir, d0 * (d1 / d0) ** e);
   if (k >= 1) fly = null;
 }
 
 function cameraPreset(name, pos) {
+  setActiveCam(name);
   const toEarth = new THREE.Vector3(...sub(pos.earth, pos.moon)).normalize();
   const side = new THREE.Vector3().crossVectors(toEarth, new THREE.Vector3(0, 0, 1)).normalize();
-  if (name === 'moon') flyTo(toEarth.clone().multiplyScalar(0.55).add(new THREE.Vector3(0, 0, -0.85)), 6500);
-  if (name === 'earth') flyTo(side.clone().multiplyScalar(-1).add(toEarth.clone().multiplyScalar(-0.5)).add(new THREE.Vector3(0, 0, 0.35)), 9.5e5);
-  if (name === 'inner') flyTo(new THREE.Vector3(0.15, -0.35, 1), 6.5e8);
-  if (name === 'all') flyTo(new THREE.Vector3(0.1, -0.4, 1), 1.1e10);
+  if (name === 'moon') flyTo(toEarth.clone().multiplyScalar(0.55).add(new THREE.Vector3(0, 0, -0.85)), 6500, 'moon');
+  if (name === 'earth') flyTo(side.clone().multiplyScalar(-0.7).add(toEarth.clone().multiplyScalar(-0.55)).add(new THREE.Vector3(0, 0, 0.72)), 1.25e6, 'earth');
+  if (name === 'inner') flyTo(new THREE.Vector3(0.15, -0.45, 1), 6.2e8, 'sun');
+  if (name === 'all') flyTo(new THREE.Vector3(0.08, -0.38, 1), 1.05e10, 'sun');
 }
 
 // ---------- per-frame scene update ----------
@@ -631,21 +655,42 @@ function updateScene() {
   moonFrame.matrix.makeRotationZ(o.node).multiply(new THREE.Matrix4().makeRotationX(o.incl)).multiply(new THREE.Matrix4().makeRotationZ(o.w));
   moonFrame.matrixWorldNeedsUpdate = true;
 
-  // Moon's orbit around Earth over the last sidereal month, in the Moon-centred frame.
+  // Seamless closed Moon orbit around Earth (antipodal cosine blend anchors exactly at Moon's position).
   const mo = moonOrbit.geometry.attributes.position, em = sub(pos.earth, moon);
   for (let i = 0; i < MOON_ORBIT_N; i++) {
-    const g = E.moonGeo(d - MOON_SIDEREAL * i / (MOON_ORBIT_N - 1));
-    mo.setXYZ(i, em[0] + g[0], em[1] + g[1], em[2] + g[2]);
+    const u = i / (MOON_ORBIT_N - 1);
+    const w = 0.5 - 0.5 * Math.cos(Math.PI * u);
+    const gf = E.moonGeo(d + u * MOON_SIDEREAL);
+    const gb = E.moonGeo(d - (1 - u) * MOON_SIDEREAL);
+    mo.setXYZ(i, em[0] + gf[0] * (1 - w) + gb[0] * w, em[1] + gf[1] * (1 - w) + gb[1] * w, em[2] + gf[2] * (1 - w) + gb[2] * w);
   }
   mo.needsUpdate = true;
-  // The orbit starts and ends at the Moon (origin); skip the stretch inside ~4 Moon radii so the
-  // line does not cut across the Moon's face.
+  // Skip vertices right inside the Moon's halo so the closed line never crosses the Moon's face.
   let a = 0, b = MOON_ORBIT_N - 1;
-  const r2 = (16 * MOON_R * MOON_R);
+  const r2 = 9 * MOON_R * MOON_R;
   const d2 = k => mo.getX(k) ** 2 + mo.getY(k) ** 2 + mo.getZ(k) ** 2;
   while (a < b && d2(a) < r2) a++;
   while (b > a && d2(b) < r2) b--;
   moonOrbit.geometry.setDrawRange(a, b - a + 1);
+
+  const mt = moonTrail.geometry.attributes.position;
+  for (let i = 0; i < MOON_TRAIL_N; i++) {
+    const g = E.moonGeo(d - MOON_TRAIL_DAYS + MOON_TRAIL_DAYS * i / (MOON_TRAIL_N - 1));
+    mt.setXYZ(i, em[0] + g[0], em[1] + g[1], em[2] + g[2]);
+  }
+  mt.needsUpdate = true;
+
+  if (!fly) {
+    const curTarget = focusPoint();
+    camera.position.add(curTarget.clone().sub(controls.target));
+    controls.target.copy(curTarget);
+  }
+
+  // Dim unrelated outer planet orbits cleanly when inspecting Earth–Moon close up.
+  const isEarthFocus = state.camFocus === 'earth';
+  for (const key of PLANETS) {
+    if (orbitLines[key]) orbitLines[key].material.opacity = isEarthFocus ? (key === 'earth' ? 0.2 : 0.1) : 0.36;
+  }
 
   if (lastTrailT === null || Math.abs(state.t - lastTrailT) > 36e5) { updateTrails(d); lastTrailT = state.t; }
   updateOrbits(d);
@@ -654,23 +699,49 @@ function updateScene() {
 function updateMarkers() {
   const rot = new THREE.Matrix4().extractRotation(moonFrame.matrix);
   const camDir = camera.position.clone();
-  const dist = camera.position.length();
-  const near = dist < MOON_R * 40;
+  const distMoon = camera.position.length();
+  const distTarget = camera.position.distanceTo(controls.target);
+  const near = distMoon < MOON_R * 40;
   const cats = { hist: $('cat-hist').checked, planned: $('cat-planned').checked, cand: $('cat-cand').checked };
   for (const m of siteMarkers) {
     const wn = m.normal.clone().applyMatrix4(rot);
     const p = wn.clone().multiplyScalar(MOON_R);
     const toCam = camDir.clone().sub(p).normalize();
     m.facing = wn.dot(toCam) > 0.06; // far side and grazing limb
-    const closeUp = m.area && dist < MOON_R + 60 * (AREA[m.cat]?.size ?? 7.5); // up close the patch is the landing zone
+    const closeUp = m.area && distMoon < MOON_R + 60 * (AREA[m.cat]?.size ?? 7.5); // up close the patch is the landing zone
     m.obj.visible = near && cats[m.cat] && m.facing && !closeUp;
     if (m.area) m.area.visible = cats[m.cat]; // depth test hides areas on the far side
   }
   if (card.m && !(card.m.facing && cats[card.m.cat])) hideCard(true);
   const labelsOn = $('opt-labels').checked;
-  for (const key of ['sun', ...PLANETS]) bodies[key].label.visible = labelsOn;
-  bodies.moon.label.visible = labelsOn && dist > MOON_R * 40;
+  for (const key of ['sun', 'moon', ...PLANETS]) bodies[key].label.visible = false;
+  if (labelsOn) {
+    const W = view.clientWidth, H = view.clientHeight;
+    const placed = [];
+    const order = state.camFocus === 'earth'
+      ? ['earth', 'moon', 'sun']
+      : (state.camFocus === 'sun' && distTarget > 2.5e9)
+        ? ['sun', 'jupiter', 'saturn', 'uranus', 'neptune', 'earth', 'mars', 'venus', 'mercury']
+        : ['sun', 'earth', 'mars', 'venus', 'mercury', 'jupiter', 'saturn', 'uranus', 'neptune', 'moon'];
+    const tmp = new THREE.Vector3();
+    for (const key of order) {
+      if (key === 'moon' && distMoon < MOON_R * 40) continue;
+      if (key === 'moon' && state.camFocus === 'sun') continue;
+      if (key === 'moon' || key === 'sun' || PLANETS.includes(key)) {
+        if (key === 'moon') tmp.set(0, 0, 0);
+        else bodies[key].obj.getWorldPosition(tmp);
+        tmp.project(camera);
+        if (tmp.z < -1 || tmp.z > 1) continue;
+        const sx = (tmp.x * 0.5 + 0.5) * W, sy = (-tmp.y * 0.5 + 0.5) * H;
+        if (sx < -40 || sx > W + 40 || sy < -20 || sy > H + 20) continue;
+        if (placed.some(([px, py]) => Math.abs(sx - px) < 64 && Math.abs(sy - py) < 16)) continue;
+        placed.push([sx, sy]);
+        bodies[key].label.visible = true;
+      }
+    }
+  }
   moonOrbit.visible = $('opt-orbits').checked;
+  moonTrail.visible = $('opt-trails').checked && distMoon > MOON_R * 12;
 }
 
 // ---------- time control ----------
@@ -801,9 +872,9 @@ let lastFrame = performance.now(), lastUi = 0;
 function frame(now) {
   const dt = (now - lastFrame) / 1000; lastFrame = now;
   if (state.playing) state.t += dt * DAY; // 1 day per second
+  updateScene();
   stepFly(now);
   controls.update();
-  updateScene();
   updateMarkers();
   positionCard();
   if (state.playing && now - lastUi > 100) { lastUi = now; syncTime(); }
@@ -820,6 +891,7 @@ updateScene();
 applyTheme(state.theme);
 wireTime();
 wirePanels();
+setActiveCam('moon');
 if (window.innerWidth < 600 || EMBED) $('left-toggle').click(); // small screens and embeds: settings tucked away
 if (EMBED) document.body.classList.add('embed');
 resize();
