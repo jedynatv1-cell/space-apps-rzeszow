@@ -1,5 +1,6 @@
 # Lunar Landing Site Navigator — NASA Space Apps 2026 (Rzeszów)
 
+**Endgame (Sun 15 Nov from 09:30):** `docs/ENDGAME-HANDOFF.md` has every laptop's remaining tasks, self-contained.
 **Start here:** read `docs/HANDOFF.md` — current status, what is verified, next steps, pitfalls.
 Deadlines: **local judging submission Sun 15 Nov 2026, 12:59 CET** (Rzeszów); global Sun 23:59 CET.
 Team of up to 6 laptops sharing one Claude quota: roles, file ownership and branches live in `.claude/roles.json`; this laptop's role in `.claude/role.local.json` (git-ignored). The session-start hook tells you which laptop you are and what you may edit; guard hooks block edits to other laptops' files and unsafe git. Skills: `/setup-laptop`, `/sync`, `/verify`, `/ship`. Plan and messaging rules: `docs/COORDINATION.md`. Demo plan: `docs/DEMO-PLAN.md`.

@@ -1,5 +1,7 @@
 # Agent instructions
 
+> **Endgame (Sun 15 Nov from 09:30): read `docs/ENDGAME-HANDOFF.md` first.** It lists every laptop's remaining tasks, deadlines and rules, self-contained.
+
 This repo is worked on by several AI agents in parallel on up to 6 laptops (Claude Code on most, Google Antigravity on L3).
 
 1. Read `CLAUDE.md`. Its project rules apply to every agent, not just Claude.
