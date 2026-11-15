@@ -2,6 +2,8 @@
 
 Team project for the Space Apps hackathon in Rzeszów: Lunar Landing Site Navigator. Compare lunar landing sites and dates by Sun and Earth visibility over the real LOLA terrain horizon (solar power and direct-to-Earth windows).
 
+**Try it without installing anything:** https://jedynatv1-cell.github.io/space-apps-rzeszow/ (static demo replaying real server responses for 4 sites; the full app with any coordinates runs locally, see Quick start).
+
 ![Sky plot, verdict and countdown](web/img/analysis.jpg)
 ![Side-by-side compare](web/img/compare.jpg)
 ![3D Moon with landing sites](web/img/moon3d.jpg)

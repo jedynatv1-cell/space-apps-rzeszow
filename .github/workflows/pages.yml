@@ -1,0 +1,51 @@
+# Static demo on GitHub Pages: the web/ frontend replaying recorded server responses
+# (web/samples/, ?recorded=1), so judges can open it without our server.
+# GitHub Pages needs a public repo on the free plan, so the job is skipped while the repo is private.
+# One-time setup after going public: Settings -> Pages -> Source: "GitHub Actions".
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the static site
+        run: |
+          cp -r web _site
+          # No API on Pages: start index.html in recorded mode unless a live ?api= server is given.
+          python3 - <<'EOF'
+          p = "_site/index.html"
+          s = open(p, encoding="utf-8").read()
+          snippet = ("<script>(function(){var q=new URLSearchParams(location.search);"
+                     "if(!q.has('api')&&!q.has('recorded')){q.set('recorded','1');"
+                     "history.replaceState(null,'',location.pathname+'?'+q.toString());}})();</script>\n")
+          i = s.index("<script")
+          open(p, "w", encoding="utf-8").write(s[:i] + snippet + s[i:])
+          EOF
+          # The 3D page asks /api/sites first: serve the recorded list there so the console stays clean.
+          mkdir -p _site/api && cp web/samples/sites.json _site/api/sites
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
