@@ -8,6 +8,9 @@ import * as E from './ephem.js?v=20261115f';
 import { SITE_INFO } from './site-info.js?v=20261115f';
 
 const $ = id => document.getElementById(id);
+// Embed mode (solar.html?embed=1): shown inside a panel on index.html. Settings start collapsed and
+// "Horizon" sends the site to the parent page instead of navigating away.
+const EMBED = new URLSearchParams(location.search).get('embed') === '1';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const MOON_R = E.BODIES.moon.radius;
 const PLANETS = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
@@ -462,9 +465,14 @@ function showCard(m) {
       <div class="more"><div>
         ${info.text ? `<p>${esc(info.text)}</p>` : ''}
         ${s.coord_note ? `<p>${esc(s.coord_note)}</p>` : ''}
-        <div class="actions"><button class="text" data-fly>Fly to site</button><a class="text" href="index.html?lat=${s.lat_deg}&lon=${s.lon_deg}">Horizon →</a></div>
+        <div class="actions"><button class="text" data-fly>Fly to site</button><a class="text" data-horizon href="index.html?lat=${s.lat_deg}&lon=${s.lon_deg}">${EMBED ? 'Analyse this site ↑' : 'Horizon →'}</a></div>
       </div></div>
       <div class="hint">Click for details</div>`;
+    if (EMBED) c.querySelector('[data-horizon]').onclick = e => {
+      e.preventDefault(); e.stopPropagation();
+      // Same-origin parent (index.html) applies the site to the analysis form.
+      window.parent.postMessage({ type: 'lunar-nav:site', lat: s.lat_deg, lon: s.lon_deg, name: s.name }, location.origin);
+    };
     c.querySelector('[data-fly]').onclick = e => {
       e.stopPropagation();
       hideCard(true); // do not cover the landing area we are flying to
@@ -669,8 +677,8 @@ function wirePanels() {
   c.addEventListener('click', e => { e.stopPropagation(); card.pinned = true; c.classList.add('open'); });
   renderer.domElement.addEventListener('click', () => { hideCard(true); togglePicker(false); });
   document.addEventListener('keydown', e => {
-    if (e.target.matches('input, select, textarea')) return;
-    if (e.key === ' ') { e.preventDefault(); if (e.target.matches('button')) e.target.blur(); setPlaying(!state.playing); }
+    if (e.target.matches?.('input, select, textarea')) return;
+    if (e.key === ' ') { e.preventDefault(); if (e.target.matches?.('button')) e.target.blur(); setPlaying(!state.playing); }
     if (e.key === 'ArrowRight') setTime(state.t + DAY);
     if (e.key === 'ArrowLeft') setTime(state.t - DAY);
     if (e.key === 'Escape') { hideCard(true); togglePicker(false); }
@@ -702,7 +710,8 @@ updateScene();
 applyTheme(state.theme);
 wireTime();
 wirePanels();
-if (window.innerWidth < 600) $('left-toggle').click(); // small screens: start with the settings tucked away
+if (window.innerWidth < 600 || EMBED) $('left-toggle').click(); // small screens and embeds: settings tucked away
+if (EMBED) document.body.classList.add('embed');
 resize();
 // Initial view: close to the Moon, looking at the south pole with Earth's direction in mind.
 {
