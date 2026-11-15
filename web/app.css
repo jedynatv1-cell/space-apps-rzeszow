@@ -850,6 +850,8 @@ main > *, .split > *, .side > *, .cmp-cols > * { min-width: 0; }
   #pano { height: 220px; }
   .chart-stage { min-height: 220px; }
   .grid { grid-template-columns: 1fr 1fr; }
+  .play { flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+  .play #scrub { flex: 1 1 120px; min-width: 0; }
   .cmp-band { grid-template-columns: 100px 1fr; }
   #server form { position: fixed; left: 12px; right: 12px; width: auto; top: 56px; }
 }
