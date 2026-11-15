@@ -4,8 +4,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import * as E from './ephem.js?v=20261115e';
-import { SITE_INFO } from './site-info.js?v=20261115e';
+import * as E from './ephem.js?v=20261115f';
+import { SITE_INFO } from './site-info.js?v=20261115f';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -122,7 +122,7 @@ const moonMaterial = new THREE.ShaderMaterial({
       vec3 up = normalize(vU);
       vec3 nrm = normalize(normalize(vE) * t.x * relief + normalize(vN) * t.y * relief + up * t.z);
       float lit = max(dot(nrm, sunDir), 0.0) * smoothstep(-0.01, 0.03, dot(up, sunDir));
-      float b = mix(1.0, 0.07 + 1.1 * lit, shade); // 0.07 ~ earthshine on the night side
+      float b = mix(1.0, 0.16 + 1.0 * lit, shade); // night-side floor: faint earthshine, raised for legibility near the pole
       gl_FragColor = vec4(c * b, 1.0);
     }`,
 });
@@ -467,6 +467,7 @@ function showCard(m) {
       <div class="hint">Click for details</div>`;
     c.querySelector('[data-fly]').onclick = e => {
       e.stopPropagation();
+      hideCard(true); // do not cover the landing area we are flying to
       flyTo(m.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix)), Math.min(camera.position.length(), MOON_R + 150)); // ~150 km up: a 15 km landing area spans ~100 px
     };
     c.hidden = false;
@@ -489,8 +490,12 @@ function positionCard() {
   if (!card.m) return;
   card.m.obj.getWorldPosition(_v).project(camera);
   const c = $('card');
-  c.style.left = `${(_v.x + 1) / 2 * view.clientWidth}px`;
-  c.style.top = `${(1 - _v.y) / 2 * view.clientHeight}px`;
+  const W = view.clientWidth, H = view.clientHeight, cw = c.offsetWidth || 280, ch = c.offsetHeight || 160;
+  const x = (_v.x + 1) / 2 * W, y = (1 - _v.y) / 2 * H;
+  // Keep the card on screen: clamp horizontally, and flip below the marker if it would be cut off at the top.
+  c.style.left = `${Math.max(cw / 2 + 8, Math.min(W - cw / 2 - 8, x))}px`;
+  c.style.top = `${y}px`;
+  c.classList.toggle('below', y - ch - 16 < 8);
 }
 
 // ---------- camera moves ----------

@@ -129,3 +129,8 @@ svg .fill { fill: currentColor; stroke: none; }
 
 .switch .key { width: 8px; height: 8px; border-radius: 50%; background: var(--c); margin-left: auto; box-shadow: 0 0 0 2px rgba(0, 0, 0, .3); }
 .switch .key + .key { margin-left: 4px; }
+
+/* Card flipped below its marker when there is no room above (e.g. right after Fly to site). */
+#card.below { transform: translate(-50%, 16px); transform-origin: 50% 0; animation-name: card-in-below; }
+@keyframes card-in-below { from { opacity: 0; transform: translate(-50%, 8px) scale(.96); } }
+#card.below::after { bottom: auto; top: -6px; transform: translateX(-50%) rotate(225deg); }
