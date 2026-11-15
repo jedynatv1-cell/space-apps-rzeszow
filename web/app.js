@@ -83,6 +83,25 @@ async function recorded(path) {
   throw new Error(`Recorded data has no ${p}`);
 }
 
+function normalizeHorizonMask(h) {
+  if (!h || typeof h !== 'object') return h;
+  if (!Array.isArray(h.elev_deg) && Array.isArray(h.el_deg)) h.elev_deg = h.el_deg;
+  if (!Number.isFinite(h.az_step_deg) && Number.isFinite(h.step_deg)) h.az_step_deg = h.step_deg;
+  return h;
+}
+
+function normalizeApiPayload(path, body) {
+  if (!body || typeof body !== 'object') return body;
+  if (body.horizon) normalizeHorizonMask(body.horizon);
+  if (Array.isArray(body.entries)) {
+    for (const e of body.entries) if (e && e.horizon) normalizeHorizonMask(e.horizon);
+  }
+  if (path.startsWith('/api/track') && (!Array.isArray(body.points) || !body.points.length)) {
+    throw new Error('Server returned an incomplete track response. Check server logs or switch to demo data.');
+  }
+  return body;
+}
+
 async function api(path) {
   if (state.recorded) return recorded(path);
   if (state.demo) return Mock.handle(path);
@@ -96,7 +115,7 @@ async function api(path) {
   const body = await r.json().catch(() => null);
   if (body === null) throw new Error(`No navigator API at ${state.api || location.origin} (HTTP ${r.status}). Set the server URL (top right) or use demo data.`);
   if (!r.ok) throw new Error(body.error || `HTTP ${r.status} for ${path}`);
-  return body;
+  return normalizeApiPayload(path, body);
 }
 
 // ---------- sites ----------

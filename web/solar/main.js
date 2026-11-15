@@ -4,16 +4,20 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import * as E from './ephem.js?v=20261115q';
-import { SITE_INFO } from './site-info.js?v=20261115q';
-import { PLANET_INFO } from './planet-info.js?v=20261115q';
+import * as E from './ephem.js?v=20261115s';
+import { SITE_INFO } from './site-info.js?v=20261115s';
+import { PLANET_INFO } from './planet-info.js?v=20261115s';
+import { createLanderSimulation, evalDescentState, drawLandingDiagram, SIM_DURATION_S } from './landing-sim.js?v=20261115s';
 
 const $ = id => document.getElementById(id);
+const PARAMS = new URLSearchParams(location.search);
 // Embed mode (solar.html?embed=1): shown inside a panel on index.html. Settings start collapsed and
 // "Horizon" sends the site to the parent page instead of navigating away.
-const EMBED = new URLSearchParams(location.search).get('embed') === '1';
+const EMBED = PARAMS.get('embed') === '1';
+const START_SIM = PARAMS.get('sim') === '1';
+const START_SITE = (PARAMS.get('site') || '').trim();
 // Only candidate regions show on load; ?show=all (for the demo video) switches every category on.
-if (new URLSearchParams(location.search).get('show') === 'all') {
+if (PARAMS.get('show') === 'all') {
   for (const id of ['cat-hist', 'cat-planned', 'cat-cand']) { const el = document.getElementById(id); if (el) el.checked = true; }
 }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -119,6 +123,10 @@ function resize() {
   labels.setSize(w, h);
   camera.aspect = w / Math.max(1, h);
   camera.updateProjectionMatrix();
+  if (typeof landerSim !== 'undefined' && landerSim.active) {
+    lastDiagramU = -1;
+    syncSimHud();
+  }
 }
 new ResizeObserver(resize).observe(view);
 
@@ -287,18 +295,23 @@ const bodies = {};
 const MOON_ORBIT_N = 360, MOON_SIDEREAL = 27.3217;
 const MOON_TRAIL_N = 64, MOON_TRAIL_DAYS = 7.5;
 let moonOrbit = null, moonTrail = null;
+let suppressHoverUntil = 0;
 function makeLabel(text, color, key) {
   const el = document.createElement('div');
   el.className = 'plabel';
   el.innerHTML = `<span class="plabel-tag" data-body="${esc(key)}"><i style="background:${color};color:${color}"></i>${esc(text)}</span>`;
   const tag = el.querySelector('.plabel-tag');
-  tag.addEventListener('pointerenter', () => {
+  const onHoverBody = () => {
+    if (fly || performance.now() < suppressHoverUntil) return;
     if ($('opt-planet-hover')?.checked && !card.pinned) {
-      showPlanetCard(key);
       cancelHide();
+      if (card.bodyKey !== key || $('card').hidden) showPlanetCard(key);
     }
-  });
-  tag.addEventListener('pointerleave', () => {
+  };
+  tag.addEventListener('pointerenter', onHoverBody);
+  tag.addEventListener('pointermove', onHoverBody);
+  tag.addEventListener('pointerleave', e => {
+    if (e.relatedTarget?.closest?.('#card, .plabel-tag, .site')) return;
     if ($('opt-planet-hover')?.checked && !card.pinned) {
       scheduleHide();
     }
@@ -355,7 +368,7 @@ function buildBodies() {
     mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), poleFromRaDec(...POLES[key]));
     if (key === 'saturn') {
       const ring = new THREE.Mesh(new THREE.RingGeometry(74500, 136780, 128),
-        new THREE.MeshBasicMaterial({ color: 0xcdbb94, side: THREE.DoubleSide, transparent: true, opacity: 0.55 }));
+        new THREE.MeshBasicMaterial({ color: 0xe6d3a7, side: THREE.DoubleSide, transparent: true, opacity: 0.78 }));
       ring.rotation.x = Math.PI / 2; // ring plane = planet equator (xz of the sphere)
       mesh.add(ring);
     }
@@ -537,8 +550,15 @@ function addSites(sites) {
     moonFrame.add(obj);
     const m = { site: s, obj, el, normal: n, cat: statusOf(s)[2] };
     m.area = makeArea(m);
-    el.addEventListener('pointerenter', () => { if (!card.pinned) showCard(m); cancelHide(); });
-    el.addEventListener('pointerleave', () => scheduleHide());
+    el.addEventListener('pointerenter', () => {
+      if (fly || performance.now() < suppressHoverUntil) return;
+      cancelHide();
+      if (!card.pinned) showCard(m);
+    });
+    el.addEventListener('pointerleave', e => {
+      if (e.relatedTarget?.closest?.('#card, .plabel-tag, .site')) return;
+      scheduleHide();
+    });
     // Pin on pointerdown, not click: markers are repositioned every frame, and if one shifts a pixel
     // between press and release the browser sends the click to a parent instead.
     el.addEventListener('pointerdown', e => {
@@ -805,9 +825,20 @@ async function loadConditions(m) {
   }
 }
 
+function revealCard(wasVisible) {
+  const c = $('card');
+  c.hidden = false;
+  if (!wasVisible) {
+    c.style.animation = 'none';
+    void c.offsetWidth;
+    c.style.animation = '';
+  }
+}
+
 function showCard(m) {
   const s = m.site, [cls, label] = statusOf(s), info = SITE_INFO[s.mission] || {};
   const c = $('card');
+  const wasVisible = !c.hidden;
   if (card.m !== m) {
     card.m = m;
     card.bodyKey = null;
@@ -831,6 +862,7 @@ function showCard(m) {
       <div class="cond"><div class="sec">Conditions, next 30 days</div><div class="cond-body">Computing…</div></div>
       <div class="actions">
         <button class="text" data-fly>Fly to site</button>
+        <button class="text" data-sim-site>Simulate landing</button>
         <a class="text" data-horizon href="index.html?lat=${s.lat_deg}&lon=${s.lon_deg}">${EMBED ? 'Analyse this site ↑' : 'Horizon & Stats ↗'}</a>
       </div>
       <div class="more"><div>
@@ -852,19 +884,62 @@ function showCard(m) {
       const rel = camera.position.distanceTo(controls.target);
       flyTo(m.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix)), Math.min(rel, MOON_R + Math.max(20, 20 * (AREA[m.cat]?.size ?? 7.5))), 'moon');
     };
-    c.hidden = false;
-    c.style.animation = 'none'; void c.offsetWidth; c.style.animation = '';
+    c.querySelector('[data-sim-site]').onclick = e => {
+      e.stopPropagation();
+      hideCard(true);
+      startSiteSim(m, { autoPlay: true, follow: true });
+    };
+    revealCard(wasVisible);
+  } else if (!wasVisible) {
+    revealCard(false);
   }
   positionCard();
   updateMoonSummary();
+}
+
+function planetDistStrings(key) {
+  const p = key === 'sun' ? [0, 0, 0] : (lastPos?.[key] || [0, 0, 0]);
+  const rSun = Math.hypot(...p);
+  const pEarth = lastPos?.earth || [0, 0, 0];
+  const rEarth = Math.hypot(p[0] - pEarth[0], p[1] - pEarth[1], p[2] - pEarth[2]);
+  const pMoon = lastPos?.moon || [0, 0, 0];
+  const rMoon = Math.hypot(p[0] - pMoon[0], p[1] - pMoon[1], p[2] - pMoon[2]);
+  const sunText = key === 'sun'
+    ? '0 AU (System Center)'
+    : `${(rSun / E.AU_KM).toFixed(3)} AU · ${(rSun / 1e6).toFixed(1)} M km`;
+  const earthLabel = key === 'earth' ? 'From Moon' : 'From Earth';
+  const earthText = (key === 'earth' || key === 'moon')
+    ? `${(rMoon / 1000).toFixed(0)}k km`
+    : `${(rEarth / E.AU_KM).toFixed(3)} AU · ${(rEarth / 1e6).toFixed(1)} M km`;
+  return { sunText, earthLabel, earthText };
+}
+
+function updatePlanetCardReadouts(key) {
+  const c = $('card');
+  const { sunText, earthText } = planetDistStrings(key);
+  const sunEl = c.querySelector('[data-live-dist="sun"]');
+  const earthEl = c.querySelector('[data-live-dist="earth"]');
+  const dateEl = $('card-date');
+  if (sunEl) sunEl.textContent = sunText;
+  if (earthEl) earthEl.textContent = earthText;
+  if (dateEl) dateEl.textContent = shortUtcDate(state.t);
 }
 
 function showPlanetCard(key) {
   if (!$('opt-planet-hover')?.checked) return;
   const b = E.BODIES[key];
   if (!b) return;
-  const pInfo = getPlanetInfo(key);
   const c = $('card');
+  const wasVisible = !c.hidden;
+  const { sunText, earthLabel, earthText } = planetDistStrings(key);
+
+  if (card.bodyKey === key && wasVisible) {
+    updatePlanetCardReadouts(key);
+    positionCard();
+    return;
+  }
+
+  const pInfo = getPlanetInfo(key);
   card.m = null;
   card.bodyKey = key;
   card.pinned = false;
@@ -873,26 +948,6 @@ function showPlanetCard(key) {
 
   c.className = 'glass';
   c.style.setProperty('--c', b.color || 'var(--accent)');
-
-  const p = key === 'sun' ? [0, 0, 0] : (lastPos?.[key] || [0, 0, 0]);
-  const rSun = Math.hypot(...p);
-  const pEarth = lastPos?.earth || [0, 0, 0];
-  const rEarth = Math.hypot(p[0] - pEarth[0], p[1] - pEarth[1], p[2] - pEarth[2]);
-  const pMoon = lastPos?.moon || [0, 0, 0];
-  const rMoon = Math.hypot(p[0] - pMoon[0], p[1] - pMoon[1], p[2] - pMoon[2]);
-
-  let earthRow = '';
-  if (key === 'earth') {
-    earthRow = `<dt>From Moon</dt><dd>${(rMoon / 1000).toFixed(0)}k km</dd>`;
-  } else if (key === 'moon') {
-    earthRow = `<dt>From Earth</dt><dd>${(rMoon / 1000).toFixed(0)}k km</dd>`;
-  } else {
-    earthRow = `<dt>From Earth</dt><dd>${(rEarth / E.AU_KM).toFixed(3)} AU · ${(rEarth / 1e6).toFixed(1)} M km</dd>`;
-  }
-
-  const sunRow = key === 'sun'
-    ? '<dt>From Sun</dt><dd>0 AU (System Center)</dd>'
-    : `<dt>From Sun</dt><dd>${(rSun / E.AU_KM).toFixed(3)} AU · ${(rSun / 1e6).toFixed(1)} M km</dd>`;
 
   const rad = b.radius ?? pInfo.radiusKm;
   const radStr = rad ? `${rad.toLocaleString()} km` : '—';
@@ -903,8 +958,8 @@ function showPlanetCard(key) {
     <h3>${esc(b.name)}</h3>
     <dl>
       <dt>Date</dt><dd id="card-date">${esc(shortUtcDate(state.t))}</dd>
-      ${sunRow}
-      ${earthRow}
+      <dt>From Sun</dt><dd data-live-dist="sun">${esc(sunText)}</dd>
+      <dt>${esc(earthLabel)}</dt><dd data-live-dist="earth">${esc(earthText)}</dd>
       <dt>Period</dt><dd>${esc(perStr)}</dd>
       <dt>Radius</dt><dd>${esc(radStr)}</dd>
       <dt>Gravity</dt><dd>${esc(pInfo.gravity || '—')}</dd>
@@ -922,19 +977,16 @@ function showPlanetCard(key) {
 
   c.querySelector('[data-focus-body]').onclick = e => {
     e.stopPropagation();
-    if (key === 'moon') cameraPreset('moon', lastPos);
-    else if (key === 'earth') cameraPreset('earth', lastPos);
-    else if (['mercury', 'venus', 'mars', 'sun'].includes(key)) cameraPreset('inner', lastPos);
-    else cameraPreset('all', lastPos);
+    flyToBody(key, lastPos);
   };
 
-  c.hidden = false;
-  c.style.animation = 'none'; void c.offsetWidth; c.style.animation = '';
+  revealCard(wasVisible);
   positionCard();
 }
 
 function hideCard(force) {
   if (card.pinned && !force) return;
+  cancelHide();
   card.m = null;
   card.bodyKey = null;
   card.pinned = false;
@@ -943,8 +995,12 @@ function hideCard(force) {
   updateCardWindow();
   updateMoonSummary();
 }
-function scheduleHide() { cancelHide(); card.timer = setTimeout(() => hideCard(false), 320); }
-function cancelHide() { clearTimeout(card.timer); }
+function scheduleHide() {
+  if (card.pinned) return;
+  cancelHide();
+  card.timer = setTimeout(() => { card.timer = 0; hideCard(false); }, 360);
+}
+function cancelHide() { clearTimeout(card.timer); card.timer = 0; }
 
 const _v = new THREE.Vector3();
 function positionCard() {
@@ -1006,6 +1062,26 @@ function positionCard() {
   c.style.top = `${topY}px`;
 }
 
+// ---------- landing simulation ----------
+
+const PHASE_ORDER = ['TRN', 'NDL', 'HDL', 'DQG'];
+const simCtrl = createLanderSimulation(THREE, moonFrame);
+const _focusTmp = new THREE.Vector3();
+const _craftPos = new THREE.Vector3();
+const landerSim = {
+  active: false,
+  playing: false,
+  followCam: true,
+  u: 0,
+  groundKm: 0,
+  siteMarker: null,
+  getWorldPos(out = _craftPos) {
+    simCtrl.getCraftFramePos(out);
+    return out.applyMatrix4(moonFrame.matrixWorld);
+  },
+};
+let lastDiagramU = -1;
+
 // ---------- camera moves ----------
 
 let fly = null;
@@ -1014,13 +1090,26 @@ function setActiveCam(name) {
 }
 function focusPoint(focus = state.camFocus, pos = lastPos) {
   if (!pos) return new THREE.Vector3();
-  if (focus === 'earth') return new THREE.Vector3(...sub(pos.earth, pos.moon));
-  if (focus === 'sun') return new THREE.Vector3(...sub(pos.sun, pos.moon));
+  if (focus === 'moon') return new THREE.Vector3();
+  if (focus === 'craft' && landerSim?.active) return landerSim.getWorldPos(_focusTmp).clone();
+  if (pos[focus]) return new THREE.Vector3(...sub(pos[focus], pos.moon));
   return new THREE.Vector3();
 }
 function flyTo(dir, dist, focus = state.camFocus, ms = 1200) {
   state.camFocus = focus;
-  controls.minDistance = focus === 'moon' ? MOON_R + 12 : focus === 'earth' ? 30000 : 3e6;
+  if (focus !== 'craft' && landerSim.active && landerSim.followCam) {
+    landerSim.followCam = false;
+    syncFollowButtons();
+  }
+  controls.minDistance = focus === 'moon'
+    ? MOON_R + 12
+    : focus === 'craft'
+      ? 4
+      : focus === 'earth'
+        ? 24000
+        : E.BODIES[focus]
+          ? Math.max(2500, E.BODIES[focus].radius * 1.7)
+          : 2500;
   const fromOffset = camera.position.clone().sub(controls.target);
   fly = { fromOffset, fromTarget: controls.target.clone(), toDir: dir.clone().normalize(), toDist: dist, t0: performance.now(), ms };
 }
@@ -1030,9 +1119,46 @@ function stepFly(now) {
   const targetNow = focusPoint();
   controls.target.lerpVectors(fly.fromTarget, targetNow, e);
   const d0 = Math.max(1, fly.fromOffset.length()), d1 = fly.toDist;
-  const dir = fly.fromOffset.clone().normalize().lerp(fly.toDir, e).normalize();
+  const dir = fly.fromOffset.clone().normalize().lerp(fly.toDir, e);
+  if (dir.lengthSq() < 1e-8) dir.copy(fly.toDir);
+  else dir.normalize();
   camera.position.copy(controls.target).addScaledVector(dir, d0 * (d1 / d0) ** e);
   if (k >= 1) fly = null;
+}
+
+function flyToBody(key, pos = lastPos) {
+  if (!pos) return;
+  suppressHoverUntil = performance.now() + 1350;
+  if (key === 'moon' || key === 'earth') {
+    hideCard(true);
+    cameraPreset(key, pos);
+    return;
+  }
+  const b = E.BODIES[key];
+  if (!b) return;
+  setActiveCam(null);
+  hideCard(true);
+  let viewDir;
+  if (key === 'sun') {
+    viewDir = new THREE.Vector3(0.4, -0.75, 0.52).normalize();
+  } else {
+    const toSun = new THREE.Vector3(...sub(pos.sun, pos[key])).normalize();
+    const tang = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 0, 1), toSun);
+    if (tang.lengthSq() < 1e-6) tang.set(1, 0, 0);
+    else tang.normalize();
+    if (key === 'saturn') {
+      const pole = poleFromRaDec(...POLES.saturn);
+      viewDir = toSun.clone().multiplyScalar(0.62).addScaledVector(tang, 0.50).addScaledVector(pole, 0.60).normalize();
+    } else {
+      viewDir = toSun.clone().multiplyScalar(0.76).addScaledVector(tang, 0.52).add(new THREE.Vector3(0, 0, 0.38)).normalize();
+    }
+  }
+  const dist = key === 'sun'
+    ? b.radius * 5.2
+    : key === 'saturn'
+      ? 136780 * 3.1
+      : Math.max(24000, b.radius * 5.4);
+  flyTo(viewDir, dist, key, 1100);
 }
 
 function cameraPreset(name, pos) {
@@ -1063,6 +1189,7 @@ function updateScene() {
   const o = E.moonOrientation(d);
   moonFrame.matrix.makeRotationZ(o.node).multiply(new THREE.Matrix4().makeRotationX(o.incl)).multiply(new THREE.Matrix4().makeRotationZ(o.w));
   moonFrame.matrixWorldNeedsUpdate = true;
+  moonFrame.updateMatrixWorld(true);
 
   // Seamless closed Moon orbit around Earth entering directly into the Moon center.
   const mo = moonOrbit.geometry.attributes.position, em = sub(pos.earth, moon);
@@ -1093,10 +1220,16 @@ function updateScene() {
     controls.target.copy(curTarget);
   }
 
-  // Dim unrelated outer planet orbits cleanly when inspecting Earth–Moon close up.
+  // Dim unrelated outer planet orbits cleanly when inspecting Earth–Moon or a focused planet close up.
   const isEarthFocus = state.camFocus === 'earth';
+  const isPlanetFocus = PLANETS.includes(state.camFocus);
   for (const key of PLANETS) {
-    if (orbitLines[key]) orbitLines[key].material.opacity = isEarthFocus ? (key === 'earth' ? 0.2 : 0.1) : 0.36;
+    if (!orbitLines[key]) continue;
+    orbitLines[key].material.opacity = isEarthFocus
+      ? (key === 'earth' ? 0.2 : 0.1)
+      : isPlanetFocus
+        ? (key === state.camFocus ? 0.45 : 0.14)
+        : 0.36;
   }
 
   if (lastTrailT === null || Math.abs(state.t - lastTrailT) > 36e5) { updateTrails(d, pos); lastTrailT = state.t; }
@@ -1223,6 +1356,169 @@ function applyTheme(theme) {
   Object.values(orbitLines).forEach(l => l.material.color.setHex(orbitCol));
 }
 
+function updateCategoryFilters() {
+  updateMarkers();
+  updateMoonSummary();
+}
+
+function syncFollowButtons() {
+  const followOn = landerSim.active && landerSim.followCam && state.camFocus === 'craft';
+  $('sim-follow-btn')?.classList.toggle('active', followOn);
+  const camFollowBtn = $('sim-cam-follow');
+  if (camFollowBtn) {
+    camFollowBtn.hidden = !landerSim.active;
+    camFollowBtn.classList.toggle('active', followOn);
+  }
+}
+
+function focusCraftCamera(dist = 28, ms = 950) {
+  if (!landerSim.active) return;
+  moonFrame.updateMatrixWorld(true);
+  const craftPos = landerSim.getWorldPos(_craftPos).clone();
+  const radial = craftPos.lengthSq() > 0 ? craftPos.clone().normalize() : new THREE.Vector3(0, 0, -1);
+  const rot = new THREE.Matrix4().extractRotation(moonFrame.matrix);
+  const siteUp = landerSim.siteMarker
+    ? landerSim.siteMarker.normal.clone().applyMatrix4(rot).normalize()
+    : radial.clone();
+  const groundPos = siteUp.multiplyScalar(MOON_R + landerSim.groundKm);
+  const toSite = groundPos.sub(craftPos);
+  const side = new THREE.Vector3().crossVectors(radial, toSite.lengthSq() > 1e-4 ? toSite : new THREE.Vector3(0, 0, 1));
+  if (side.lengthSq() < 1e-6) side.crossVectors(radial, new THREE.Vector3(1, 0, 0));
+  side.normalize();
+  const backDir = toSite.lengthSq() > 1e-4 ? toSite.clone().normalize().multiplyScalar(-0.35) : new THREE.Vector3();
+  const viewDir = radial.clone().multiplyScalar(0.45).addScaledVector(side, 0.82).add(backDir).normalize();
+  setActiveCam(null);
+  flyTo(viewDir, dist, 'craft', ms);
+}
+
+function syncSimHud(ds, fromScrub = false) {
+  if (!landerSim.active) return;
+  const stateData = ds || evalDescentState(landerSim.u);
+  const badge = $('sim-phase-badge');
+  if (badge && stateData.phase) {
+    const idx = Math.max(1, PHASE_ORDER.indexOf(stateData.phase.id) + 1);
+    badge.textContent = `${String(idx).padStart(2, '0')} · ${stateData.phase.id}`;
+    badge.dataset.phase = stateData.phase.id;
+  }
+  const siteNameEl = $('sim-site-name');
+  if (siteNameEl) siteNameEl.textContent = landerSim.siteMarker?.site?.name || 'Lunar South Pole';
+  const playBtn = $('sim-play');
+  if (playBtn) {
+    playBtn.textContent = landerSim.playing ? '⏸' : '▶';
+    playBtn.classList.toggle('active', landerSim.playing);
+    playBtn.setAttribute('aria-label', landerSim.playing ? 'Pause simulation' : 'Play simulation');
+  }
+  syncFollowButtons();
+  const scrub = $('sim-scrub');
+  if (scrub && !fromScrub) scrub.value = String(landerSim.u);
+  const tEl = $('sim-t');
+  if (tEl) {
+    const tSec = stateData.tSec ?? landerSim.u * SIM_DURATION_S;
+    tEl.textContent = `T+${String(Math.round(tSec)).padStart(3, '0')}s`;
+  }
+  document.querySelectorAll('#sim-phases [data-sim-u], #sim-phases [data-phase]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.phase === stateData.phase?.id);
+  });
+  const altEl = $('sim-m-alt');
+  if (altEl) altEl.textContent = stateData.altKm >= 1 ? `${stateData.altKm.toFixed(2)} km` : `${Math.round(stateData.altM)} m`;
+  const velEl = $('sim-m-vel');
+  if (velEl) velEl.textContent = `${stateData.totalVelMs >= 100 ? stateData.totalVelMs.toFixed(0) : stateData.totalVelMs.toFixed(1)} m/s`;
+  const pitchEl = $('sim-m-pitch');
+  if (pitchEl) pitchEl.textContent = `${stateData.pitchDeg.toFixed(1)}°`;
+  const throtEl = $('sim-m-throt');
+  if (throtEl) throtEl.textContent = `${Math.round(stateData.throttlePct)}%`;
+
+  const diag = $('sim-diagram');
+  if (diag && landerSim.u !== lastDiagramU) {
+    lastDiagramU = landerSim.u;
+    drawLandingDiagram(diag, landerSim.u, { siteName: landerSim.siteMarker?.site?.name });
+  }
+}
+
+function startSiteSim(m, { autoPlay = true, follow = true } = {}) {
+  const target = m
+    || state.activeSite
+    || siteMarkers.find(x => /Shackleton|Malapert/i.test(x.site.name))
+    || siteMarkers[0];
+  if (!target) return;
+  if (target.cat) {
+    const catEl = $(`cat-${target.cat}`);
+    if (catEl && !catEl.checked) {
+      catEl.checked = true;
+      updateCategoryFilters();
+    }
+  }
+  moonFrame.updateMatrixWorld(true);
+  const groundKm = heightKm(target.site.lat_deg, target.site.lon_deg);
+  simCtrl.reset(target, groundKm);
+
+  state.activeSite = target;
+  landerSim.siteMarker = target;
+  landerSim.groundKm = groundKm;
+  landerSim.active = true;
+  landerSim.playing = autoPlay;
+  landerSim.followCam = follow;
+  landerSim.u = 0;
+
+  siteMarkers.forEach(x => x.el.classList.toggle('active', x === target));
+  updateCardWindow();
+  updateMoonSummary();
+
+  const hud = $('sim-hud');
+  if (hud) hud.hidden = false;
+  const toggleBtn = $('sim-toggle');
+  if (toggleBtn) {
+    toggleBtn.textContent = 'Close Landing Sim';
+    toggleBtn.classList.add('active');
+  }
+  if ($('sim-cam-follow')) $('sim-cam-follow').hidden = false;
+
+  const ds = simCtrl.setProgress(0, performance.now());
+  lastDiagramU = -1;
+  syncSimHud(ds);
+
+  if (follow) focusCraftCamera(28, 1000);
+}
+
+function stopSiteSim() {
+  if (!landerSim.active) return;
+  landerSim.active = false;
+  landerSim.playing = false;
+  landerSim.followCam = false;
+  simCtrl.hide();
+  const hud = $('sim-hud');
+  if (hud) hud.hidden = true;
+  const toggleBtn = $('sim-toggle');
+  if (toggleBtn) {
+    toggleBtn.textContent = 'Launch Spacecraft Sim';
+    toggleBtn.classList.remove('active');
+  }
+  syncFollowButtons();
+  if (state.camFocus === 'craft') {
+    const siteDir = landerSim.siteMarker
+      ? landerSim.siteMarker.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix))
+      : camera.position.clone().normalize();
+    setActiveCam('moon');
+    flyTo(siteDir, Math.max(MOON_R + 120, Math.min(6500, camera.position.length() * 1.05)), 'moon', 750);
+  }
+}
+
+function toggleCraftFollow() {
+  if (!landerSim.active) return;
+  const nextFollow = !(landerSim.followCam && state.camFocus === 'craft');
+  landerSim.followCam = nextFollow;
+  if (nextFollow) {
+    focusCraftCamera(28, 750);
+  } else {
+    state.camFocus = 'moon';
+    controls.minDistance = MOON_R + 12;
+    setActiveCam('moon');
+    const dir = landerSim.getWorldPos().normalize();
+    flyTo(dir, Math.max(MOON_R + 60, camera.position.length()), 'moon', 650);
+  }
+  syncFollowButtons();
+}
+
 function wirePanels() {
   $('left-toggle').onclick = () => {
     const collapsed = $('left').classList.toggle('collapsed');
@@ -1241,14 +1537,70 @@ function wirePanels() {
 
   ['cat-hist', 'cat-planned', 'cat-cand'].forEach(id => {
     const el = $(id);
-    if (el) el.addEventListener('change', () => updateMoonSummary());
+    if (el) el.addEventListener('change', updateCategoryFilters);
   });
+
+  if ($('sim-toggle')) {
+    $('sim-toggle').onclick = () => {
+      if (landerSim.active) stopSiteSim();
+      else startSiteSim(null, { autoPlay: true, follow: true });
+    };
+  }
+  if ($('sim-close')) $('sim-close').onclick = stopSiteSim;
+  if ($('sim-play')) {
+    $('sim-play').onclick = () => {
+      if (!landerSim.active) return;
+      if (!landerSim.playing && landerSim.u >= 0.999) landerSim.u = 0;
+      landerSim.playing = !landerSim.playing;
+      lastDiagramU = -1;
+      syncSimHud(simCtrl.setProgress(landerSim.u, performance.now()));
+    };
+  }
+  if ($('sim-reset')) {
+    $('sim-reset').onclick = () => {
+      if (!landerSim.active) return;
+      landerSim.u = 0;
+      landerSim.playing = true;
+      lastDiagramU = -1;
+      syncSimHud(simCtrl.setProgress(0, performance.now()));
+    };
+  }
+  if ($('sim-follow-btn')) $('sim-follow-btn').onclick = toggleCraftFollow;
+  if ($('sim-cam-follow')) $('sim-cam-follow').onclick = toggleCraftFollow;
+  if ($('sim-scrub')) {
+    const scrub = $('sim-scrub');
+    scrub.addEventListener('input', () => {
+      if (!landerSim.active) return;
+      landerSim.playing = false;
+      landerSim.u = Math.max(0, Math.min(1, Number(scrub.value) || 0));
+      lastDiagramU = -1;
+      syncSimHud(simCtrl.setProgress(landerSim.u, performance.now()), true);
+    });
+  }
+  if ($('sim-phases')) {
+    $('sim-phases').addEventListener('click', e => {
+      const btn = e.target.closest?.('[data-sim-u]');
+      if (!btn || !landerSim.active) return;
+      landerSim.u = Math.max(0, Math.min(1, Number(btn.dataset.simU) || 0));
+      lastDiagramU = -1;
+      syncSimHud(simCtrl.setProgress(landerSim.u, performance.now()));
+      if (landerSim.followCam) focusCraftCamera(20, 650);
+    });
+  }
 
   document.querySelectorAll('[data-cam]').forEach(b => (b.onclick = () => cameraPreset(b.dataset.cam, lastPos)));
   const c = $('card');
   c.addEventListener('pointerenter', cancelHide);
-  c.addEventListener('pointerleave', scheduleHide);
-  c.addEventListener('click', e => { e.stopPropagation(); card.pinned = true; c.classList.add('open'); });
+  c.addEventListener('pointerleave', e => {
+    if (e.relatedTarget?.closest?.('#card, .plabel-tag, .site')) return;
+    scheduleHide();
+  });
+  c.addEventListener('click', e => {
+    e.stopPropagation();
+    if (c.hidden || e.target.closest('[data-focus-body], [data-sim-site], [data-fly], .close')) return;
+    card.pinned = true;
+    c.classList.add('open');
+  });
 
   // Hover and click on shaded landing areas or celestial bodies
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -1261,16 +1613,17 @@ function wirePanels() {
     return hit ? hit.object.userData.site : null;
   };
 
-  const pickBodyAt = (clientX, clientY) => {
+  const pickBodyAt = (clientX, clientY, stickyKey = null) => {
     if (!$('opt-planet-hover')?.checked) return null;
     const r = renderer.domElement.getBoundingClientRect();
     const px = clientX - r.left, py = clientY - r.top;
     const distMoon = camera.position.length();
 
-    // 1. Check screen distance to projected body centers (16 px radius)
+    // 1. Check screen distance to projected body centers (16 px pickup, 28 px sticky keep-alive)
     let closestKey = null, closestDist = 16;
+    let stickyDist = Infinity;
     const tmp = new THREE.Vector3();
-    for (const key of ['sun', 'moon', ...PLANETS]) {
+    for (const key of PICKABLE_BODIES) {
       if (key === 'moon' && distMoon <= MOON_R * 8) continue;
       if (key === 'moon') tmp.set(0, 0, 0);
       else if (bodies[key]?.obj) bodies[key].obj.getWorldPosition(tmp);
@@ -1280,6 +1633,7 @@ function wirePanels() {
       const sx = (tmp.x * 0.5 + 0.5) * r.width;
       const sy = (-tmp.y * 0.5 + 0.5) * r.height;
       const d = Math.hypot(px - sx, py - sy);
+      if (key === stickyKey && d < 28) stickyDist = d;
       if (d < closestDist) {
         closestDist = d;
         closestKey = key;
@@ -1299,6 +1653,9 @@ function wirePanels() {
       if (k === 'moon' && distMoon <= MOON_R * 8) continue;
       if (k) return k;
     }
+
+    // 3. Keep sticky small marker alive within 28 px hysteresis band
+    if (stickyKey && stickyDist < 28) return stickyKey;
     return null;
   };
 
@@ -1307,25 +1664,40 @@ function wirePanels() {
     pending = true;
     requestAnimationFrame(() => {
       pending = false;
+      if (fly || performance.now() < suppressHoverUntil) return;
+      const overUi = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('#card, .plabel-tag, .site');
+      if (overUi) {
+        cancelHide();
+        renderer.domElement.style.cursor = '';
+        areaHover = null;
+        return;
+      }
       const m = hitArea(e.clientX, e.clientY);
       if (m && !card.pinned) {
-        showCard(m); cancelHide();
+        cancelHide();
+        showCard(m);
         renderer.domElement.style.cursor = 'pointer';
       } else if (!m && $('opt-planet-hover')?.checked) {
-        const bodyKey = pickBodyAt(e.clientX, e.clientY);
+        const stickyKey = !card.pinned ? card.bodyKey : null;
+        const bodyKey = pickBodyAt(e.clientX, e.clientY, stickyKey);
         if (bodyKey && !card.pinned) {
-          showPlanetCard(bodyKey); cancelHide();
+          cancelHide();
+          showPlanetCard(bodyKey);
           renderer.domElement.style.cursor = 'pointer';
         } else {
-          if (!card.pinned && (areaHover || card.bodyKey)) scheduleHide();
+          if (!card.pinned && (areaHover || card.bodyKey || card.m) && !card.timer) scheduleHide();
           renderer.domElement.style.cursor = '';
         }
       } else {
-        if (!card.pinned && (areaHover || card.bodyKey)) scheduleHide();
+        if (!card.pinned && (areaHover || card.bodyKey || card.m) && !card.timer) scheduleHide();
         renderer.domElement.style.cursor = '';
       }
       areaHover = m;
     });
+  });
+  renderer.domElement.addEventListener('pointerleave', e => {
+    if (e.relatedTarget?.closest?.('#card, .plabel-tag, .site')) return;
+    scheduleHide();
   });
   renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
   renderer.domElement.addEventListener('click', e => {
@@ -1356,18 +1728,83 @@ let lastFrame = performance.now(), lastUi = 0;
 function frame(now) {
   const dt = (now - lastFrame) / 1000; lastFrame = now;
   if (state.playing) state.t += dt * DAY; // 1 day per second
+  if (landerSim.active) {
+    if (landerSim.playing) {
+      landerSim.u += Math.min(0.1, Math.max(0, dt)) / 18;
+      if (landerSim.u >= 1) {
+        landerSim.u = 1;
+        landerSim.playing = false;
+      }
+    }
+    const ds = simCtrl.setProgress(landerSim.u, now);
+    syncSimHud(ds);
+  }
   updateScene();
   stepFly(now);
   controls.update();
+  if (state.camFocus === 'moon' || state.camFocus === 'craft') {
+    const minR = state.camFocus === 'craft'
+      ? Math.max(MOON_R + 1.2, MOON_R + landerSim.groundKm + 0.8)
+      : MOON_R + 1.2;
+    const camLen = camera.position.length();
+    if (camLen > 0 && camLen < minR) camera.position.multiplyScalar(minR / camLen);
+  }
   updateMarkers();
   positionCard();
-  if (state.playing && now - lastUi > 100) { lastUi = now; syncTime(); }
+  if (state.playing && now - lastUi > 100) {
+    lastUi = now;
+    syncTime();
+    if (card.bodyKey && !$('card').hidden) updatePlanetCardReadouts(card.bodyKey);
+  }
   renderer.render(scene, camera);
   labels.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
 // ---------- start ----------
+
+function makeCustomSiteMarker(name, lat, lon) {
+  const latR = lat * Math.PI / 180, lonR = lon * Math.PI / 180;
+  const normal = new THREE.Vector3(Math.cos(latR) * Math.cos(lonR), Math.cos(latR) * Math.sin(lonR), Math.sin(latR));
+  const label = name || `${Math.abs(lat).toFixed(2)}°${lat < 0 ? 'S' : 'N'}, ${Math.abs(lon).toFixed(2)}°${lon < 0 ? 'W' : 'E'}`;
+  return {
+    site: { name: label, mission: label, status: 'candidate_region', lat_deg: lat, lon_deg: lon },
+    obj: null,
+    el: null,
+    normal,
+    cat: 'cand',
+    area: null,
+  };
+}
+
+function findSiteMarker({ name, lat, lon } = {}) {
+  const norm = s => String(s || '').replace(/\s*\(candidate region\)$/i, '').trim().toLowerCase();
+  const q = norm(name);
+  if (q) {
+    const exact = siteMarkers.find(m => norm(m.site.name) === q || norm(m.site.mission) === q);
+    if (exact) return exact;
+    const subMatch = siteMarkers.find(m => norm(m.site.name).includes(q) || norm(m.site.mission).includes(q));
+    if (subMatch) return subMatch;
+  }
+  if (Number.isFinite(+lat) && Number.isFinite(+lon)) {
+    let best = null, bestD = 0.35;
+    for (const m of siteMarkers) {
+      const d = Math.hypot(m.site.lat_deg - +lat, m.site.lon_deg - +lon);
+      if (d < bestD) { bestD = d; best = m; }
+    }
+    if (best) return best;
+    return makeCustomSiteMarker(name, +lat, +lon);
+  }
+  return null;
+}
+
+let sitesReady = false;
+let pendingSimPayload = null;
+window.addEventListener('message', e => {
+  if (e.origin !== location.origin || !e.data || e.data.type !== 'lunar-nav:sim') return;
+  if (!sitesReady) { pendingSimPayload = e.data; return; }
+  startSiteSim(findSiteMarker(e.data), { autoPlay: true, follow: true });
+});
 
 buildBodies();
 PLANETS.forEach(makeTrail);
@@ -1394,6 +1831,33 @@ requestAnimationFrame(frame);
 loadMoon().catch(e => { $('loading').textContent = `Could not load Moon textures: ${e.message || e}`; });
 loadSites().then(sites => {
   addSites(sites);
+  sitesReady = true;
+  if (pendingSimPayload) {
+    const payload = pendingSimPayload;
+    pendingSimPayload = null;
+    startSiteSim(findSiteMarker(payload), { autoPlay: true, follow: true });
+  } else {
+    const requestedSite = START_SITE ? findSiteMarker({ name: START_SITE }) : null;
+    if (START_SIM) {
+      startSiteSim(requestedSite, { autoPlay: true, follow: true });
+    } else if (requestedSite) {
+      if (requestedSite.cat) {
+        const catEl = $(`cat-${requestedSite.cat}`);
+        if (catEl && !catEl.checked) {
+          catEl.checked = true;
+          updateCategoryFilters();
+        }
+      }
+      state.activeSite = requestedSite;
+      siteMarkers.forEach(x => x.el.classList.toggle('active', x === requestedSite));
+      updateCardWindow();
+      updateMoonSummary();
+      setActiveCam('moon');
+      const dir = requestedSite.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(moonFrame.matrix));
+      flyTo(dir, MOON_R + Math.max(20, 20 * (AREA[requestedSite.cat]?.size ?? 7.5)), 'moon', 900);
+    }
+  }
+
   loadHeights().catch(() => null).then(() => {
     for (const m of siteMarkers) {
       const h = heightKm(m.site.lat_deg, m.site.lon_deg);
@@ -1402,6 +1866,14 @@ loadSites().then(sites => {
         moonFrame.remove(m.area);
         m.area = makeArea(m);
       }
+    }
+    if (landerSim.active && landerSim.siteMarker) {
+      const h = heightKm(landerSim.siteMarker.site.lat_deg, landerSim.siteMarker.site.lon_deg);
+      landerSim.groundKm = h;
+      simCtrl.reset(landerSim.siteMarker, h);
+      const ds = simCtrl.setProgress(landerSim.u, performance.now());
+      lastDiagramU = -1;
+      syncSimHud(ds);
     }
   });
 });
